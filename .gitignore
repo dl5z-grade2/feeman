@@ -1,0 +1,13 @@
+__pycache__
+__pycache__/**
+venv
+.venv\
+*.png
+*.xlsx
+*.xls
+*.csv
+build
+dist
+*.spec
+*.cfee
+*.exe

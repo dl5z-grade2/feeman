@@ -1,0 +1,18 @@
+[project]
+name = "fee-man"
+version = "1.0.0"
+description = "饭费管理系统 —— 按月统计订餐费用，支持 Excel 名单导入与核算表导出"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+dependencies = [
+    "openpyxl>=3.1",
+]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.0",
+]
+
+[tool.uv]
+package = false
