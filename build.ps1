@@ -1,4 +1,4 @@
-﻿# -*- mode: powershell -*-
+# -*- mode: powershell -*-
 <#
 .SYNOPSIS
     Build FeeMan: sync deps -> PyInstaller -> Inno Setup installer.
@@ -22,7 +22,9 @@
 [CmdletBinding()]
 param(
     [switch]$SkipInstaller,
-    [switch]$Clean
+    [switch]$Clean,
+    # 目标 Python 版本，默认 3.8.9（与 CI 一致）；本机装其他版本时可覆盖
+    [string]$PythonVersion = "3.8.9"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,7 +48,8 @@ Write-Step "Checking toolchain"
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     Fail "uv not found. Install: powershell -c ""irm https://astral.sh/uv/install.ps1 | iex"""
 }
-Write-Host ("uv   : " + ((uv --version) -join " "))
+Write-Host ("uv      : " + ((uv --version) -join " "))
+Write-Host ("python  : " + $PythonVersion)
 
 $iscc = $null
 foreach ($candidate in @(
@@ -72,18 +75,32 @@ if ($Clean) {
 }
 
 # ---------------------------------------------------------------- deps
-Write-Step "Syncing dependencies (uv sync)"
-uv sync
-if ($LASTEXITCODE -ne 0) { Fail "uv sync failed" }
+Write-Step "Preparing Python $PythonVersion environment"
+uv python install $PythonVersion
+if ($LASTEXITCODE -ne 0) { Fail "uv python install failed" }
+
+$venv = Join-Path $root ".venv-build"
+if (Test-Path $venv) { Remove-Item $venv -Recurse -Force }
+uv venv $venv --python $PythonVersion
+if ($LASTEXITCODE -ne 0) { Fail "uv venv failed" }
+
+$py = Join-Path $venv "Scripts\python.exe"
+if (-not (Test-Path $py)) { Fail "missing $py" }
+Write-Host ("venv    : " + $venv)
+& $py --version
+
+Write-Step "Installing dependencies"
+uv pip install --python $py openpyxl "pyinstaller>=6.0"
+if ($LASTEXITCODE -ne 0) { Fail "dependency install failed" }
 
 # ---------------------------------------------------------------- self-check
 Write-Step "Self-check"
-uv run python -c "import fee_core, fee_app, openpyxl, tkinter; print('imports OK')"
+& $py -c "import fee_core, fee_app, openpyxl, tkinter; print('imports OK')"
 if ($LASTEXITCODE -ne 0) { Fail "self-check failed" }
 
 # ---------------------------------------------------------------- package
 Write-Step "Packaging with PyInstaller"
-uv run pyinstaller fee_app.spec --noconfirm --clean --distpath dist --workpath build
+& $py -m PyInstaller fee_app.spec --noconfirm --clean --distpath dist --workpath build
 if ($LASTEXITCODE -ne 0) { Fail "PyInstaller failed" }
 
 $exe = Join-Path $root "dist\FeeMan\FeeMan.exe"
@@ -92,6 +109,11 @@ $exeKB = (Get-Item $exe).Length / 1KB
 $totalMB = ((Get-ChildItem (Join-Path $root "dist\FeeMan") -Recurse |
              Measure-Object Length -Sum).Sum) / 1MB
 Write-Host ("exe  : dist\FeeMan\FeeMan.exe ({0:N0} KB, folder {1:N1} MB)" -f $exeKB, $totalMB)
+
+# 冒烟：--help 能正常退出
+$help = Start-Process -FilePath $exe -ArgumentList "--help" -PassThru -Wait -NoNewWindow
+if ($help.ExitCode -ne 0) { Fail "FeeMan.exe --help exited with $($help.ExitCode)" }
+Write-Host "smoke: FeeMan.exe --help OK"
 
 # ---------------------------------------------------------------- installer
 if (-not $SkipInstaller) {

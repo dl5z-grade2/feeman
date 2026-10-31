@@ -409,10 +409,14 @@ def _meal_days(proj: "Project") -> Dict[str, List[int]]:
     """把餐别映射到当月具体日期。
 
     午餐 / 晚餐 -> 周一到周五；周六餐 -> 周六。
-    只统计“当月实际供餐”的日期（已排除每周休息日）。
+
+    这里按**当月日历**映射，不排除每周休息日：文本里写明“不订周六餐”
+    就说明该月周六是供餐日，若因默认休息日是周六而把它整条丢弃，
+    用户会觉得功能失效。记到休息日上不会影响费用（休息日单价恒为 0，
+    也不计入订餐天数），但能在“每日不订”里看到真实记录。
     """
     weekdays, saturdays = [], []
-    for d in proj.open_days():
+    for d in proj.day_list():
         wd = proj.weekday_of(d)
         if wd < 5:
             weekdays.append(d)

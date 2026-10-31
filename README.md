@@ -30,20 +30,25 @@ uv run fee_app.py --help           :: 查看命令行用法
 
 ## 构建与打包
 
+打包固定使用 **Python 3.8.9**（与 CI 一致），避免高版本 Python 打出的 exe 在旧系统上不可用。
+
 ```powershell
-# 一条命令完成全部：uv sync → PyInstaller → Inno Setup
+# 一条命令完成全部：准备 3.8.9 环境 → PyInstaller → Inno Setup
 powershell -ExecutionPolicy Bypass -File build.ps1
 
 # 可选参数
-powershell -ExecutionPolicy Bypass -File build.ps1 -Clean           # 先清空 build/ dist/
-powershell -ExecutionPolicy Bypass -File build.ps1 -SkipInstaller   # 只打包 exe
+powershell -ExecutionPolicy Bypass -File build.ps1 -Clean                     # 先清空 build/ dist/
+powershell -ExecutionPolicy Bypass -File build.ps1 -SkipInstaller             # 只打包 exe
+powershell -ExecutionPolicy Bypass -File build.ps1 -PythonVersion 3.13.13     # 指定其它版本
 ```
 
 手动分步执行：
 
 ```bat
-uv sync
-uv run pyinstaller fee_app.spec --noconfirm --clean
+uv python install 3.8.9
+uv venv .venv-build --python 3.8.9
+uv pip install --python .venv-build\Scripts\python.exe openpyxl "pyinstaller>=6.0"
+.venv-build\Scripts\python.exe -m PyInstaller fee_app.spec --noconfirm --clean
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 ```
 
@@ -51,8 +56,8 @@ uv run pyinstaller fee_app.spec --noconfirm --clean
 
 | 路径 | 说明 |
 | --- | --- |
-| `dist\FeeMan\FeeMan.exe` | 免安装程序（onedir，含 `_internal` 依赖） |
-| `dist\FeeMan-Setup-1.0.0.exe` | 安装包（约 10 MB，LZMA2 压缩） |
+| `dist\FeeMan\FeeMan.exe` | 免安装程序（onedir，含 `_internal` 依赖），3.8.9 版本整目录约 19.7 MB |
+| `dist\FeeMan-Setup-1.0.0.exe` | 安装包（约 8.3 MB，LZMA2 压缩） |
 
 安装包会：
 
@@ -62,6 +67,38 @@ uv run pyinstaller fee_app.spec --noconfirm --clean
 - 卸载时自动清理文件与注册表项，并刷新资源管理器图标缓存。
 
 > 需要 Inno Setup 6：`winget install JRSoftware.InnoSetup`。语言文件已随仓库提供（`installer\Languages\`），不依赖安装目录自带中文。
+
+## 持续集成
+
+`.github/workflows/build.yml` 在 `windows-2022` 上自动构建：
+
+- 触发：推送到 `main` / `master`、PR、打 `v*` 标签、手动 `workflow_dispatch`；
+- 固定 **Python 3.8.9**（`uv python install`），依赖装进独立 venv；
+- 自检导入 → PyInstaller 打包 → `FeeMan.exe --help` 冒烟 → Chocolatey 安装 Inno Setup → 编译安装包；
+- 产出两个 artifact：`FeeMan-Setup-1.0.0.exe` 与 `FeeMan-portable-1.0.0.zip`（免安装版压缩包）；
+- 打 `v*` 标签时自动创建 GitHub Release 并附上这两个文件。
+
+本地复现 CI 构建：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build.ps1 -Clean
+```
+
+## 快捷键
+
+| 快捷键 | 功能 |
+| --- | --- |
+| `Ctrl+N` / `Ctrl+O` / `Ctrl+S` / `Ctrl+Shift+S` | 新建 / 打开 / 保存 / 另存为 |
+| `Ctrl+I` / `Ctrl+Shift+I` / `Ctrl+E` | 导入名单 / 导入本月不订 / 导出核算表 |
+| `Ctrl+Shift+N` / `F2` / `Delete` | 添加人员 / 编辑选中 / 删除选中 |
+| `Ctrl+T` | 标记今天不订 |
+| `Ctrl+1` ~ `Ctrl+5` | 切换到第 1~5 个页签 |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | 下一个 / 上一个页签（循环） |
+| `F5` | 刷新全部数据 |
+| `F1` / `Ctrl+/` | 使用说明 / 快捷键一览 |
+| `Alt+F4` | 退出 |
+
+> 光标在输入框内时，`Delete`、`F2` 等不会触发，避免误操作；保存类快捷键在任何位置都有效。
 
 
 ## 功能

@@ -4,6 +4,7 @@ __pycache__/**
 *.py[cod]
 *.egg-info/
 .venv/
+.venv*/
 venv/
 
 # ---- uv ----
@@ -11,7 +12,9 @@ venv/
 
 # ---- PyInstaller ----
 build/
+build_*/
 dist/
+dist_*/
 # fee_app.spec 是手写配置，需要提交；只忽略 PyInstaller 自动生成的 *.spec.bak
 *.spec.bak
 

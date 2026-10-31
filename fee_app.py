@@ -495,28 +495,48 @@ class FeeApp(tk.Tk):
         file_menu.add_command(label="打开工程...", accelerator="Ctrl+O", command=self.open_project)
         file_menu.add_separator()
         file_menu.add_command(label="保存", accelerator="Ctrl+S", command=self.save_project)
-        file_menu.add_command(label="另存为...", command=self.save_project_as)
+        file_menu.add_command(label="另存为...", accelerator="Ctrl+Shift+S", command=self.save_project_as)
         file_menu.add_separator()
-        file_menu.add_command(label="导入名单（Excel/CSV）...", command=self.import_roster)
+        file_menu.add_command(label="导入名单（Excel/CSV）...", accelerator="Ctrl+I", command=self.import_roster)
         file_menu.add_command(label="从文本粘贴名单...", command=self.import_roster_text)
-        file_menu.add_command(label="导入本月不订（自由文本）...", command=self.import_unordered)
+        file_menu.add_command(label="导入本月不订（自由文本）...", accelerator="Ctrl+Shift+I",
+                              command=self.import_unordered)
         file_menu.add_command(label="下载名单模板...", command=self.export_template)
-        file_menu.add_command(label="导出核算表（Excel）...", command=self.export_settlement)
+        file_menu.add_command(label="导出核算表（Excel）...", accelerator="Ctrl+E", command=self.export_settlement)
         file_menu.add_separator()
-        file_menu.add_command(label="退出", command=self._on_close)
+        file_menu.add_command(label="退出", accelerator="Alt+F4", command=self._on_close)
         menubar.add_cascade(label="文件", menu=file_menu)
 
         edit_menu = tk.Menu(menubar, tearoff=False)
-        edit_menu.add_command(label="添加人员...", command=self.add_person)
-        edit_menu.add_command(label="编辑选中人员...", command=self.edit_person)
-        edit_menu.add_command(label="删除选中人员", command=self.delete_person)
+        edit_menu.add_command(label="添加人员...", accelerator="Ctrl+Shift+N", command=self.add_person)
+        edit_menu.add_command(label="编辑选中人员...", accelerator="F2", command=self.edit_person)
+        edit_menu.add_command(label="删除选中人员", accelerator="Delete", command=self.delete_person)
         edit_menu.add_separator()
         edit_menu.add_command(label="设置选中日期单价...", command=lambda: self.edit_selected_day())
         edit_menu.add_command(label="清除选中日期设置", command=lambda: self.clear_selected_day())
+        edit_menu.add_separator()
+        edit_menu.add_command(label="标记/取消今天不订", accelerator="空格",
+                              command=self.toggle_selected_skip)
+        edit_menu.add_command(label="整月都不订", command=lambda: self._set_all_days(True))
+        edit_menu.add_command(label="清除该人全部不订", command=lambda: self._set_all_days(False))
         menubar.add_cascade(label="编辑", menu=edit_menu)
 
+        view_menu = tk.Menu(menubar, tearoff=False)
+        for idx, name in enumerate(["今日订餐", "每日单价", "人员名单", "每日不订", "核算汇总"], start=1):
+            view_menu.add_command(label=name, accelerator=f"Ctrl+{idx}",
+                                  command=lambda i=idx - 1: self.goto_tab(i))
+        view_menu.add_separator()
+        view_menu.add_command(label="下一个页签", accelerator="Ctrl+Tab",
+                              command=lambda: self.goto_tab((self._current_tab() + 1) % 5))
+        view_menu.add_command(label="上一个页签", accelerator="Ctrl+Shift+Tab",
+                              command=lambda: self.goto_tab((self._current_tab() - 1) % 5))
+        view_menu.add_separator()
+        view_menu.add_command(label="刷新", accelerator="F5", command=self.refresh_all)
+        menubar.add_cascade(label="查看", menu=view_menu)
+
         help_menu = tk.Menu(menubar, tearoff=False)
-        help_menu.add_command(label="使用说明", command=self.show_help)
+        help_menu.add_command(label="使用说明", accelerator="F1", command=self.show_help)
+        help_menu.add_command(label="快捷键一览", accelerator="Ctrl+/", command=self.show_shortcuts)
         help_menu.add_command(label="关于", command=self.show_about)
         menubar.add_cascade(label="帮助", menu=help_menu)
 
@@ -845,10 +865,199 @@ class FeeApp(tk.Tk):
         ttk.Label(bar, textvariable=self.file_var, anchor="e", style="Hint.TLabel").pack(side="right")
 
     def _bind_shortcuts(self) -> None:
-        self.bind("<Control-n>", lambda e: self.new_project())
-        self.bind("<Control-o>", lambda e: self.open_project())
-        self.bind("<Control-s>", lambda e: self.save_project())
-        self.bind("<F5>", lambda e: self.refresh_all())
+        """注册全局快捷键。
+
+        只用**一个** ``<KeyPress>`` 通配绑定处理全部按键（含 Ctrl 组合）。
+        绑定多个序列时 Tcl 的 ``break`` 会让后续绑定不执行，而
+        ``<Control-KeyPress>`` 与 ``<Control-Key-2>`` 还会重复命中同一按键，
+        因此统一入口自行分派。
+        """
+        self.bind_all("<KeyPress>", self._dispatch, add="+")
+
+        # Ctrl+Tab 的 keysym 仍是 Tab，会先命中 Tk 内置的 <Tab>（焦点遍历）并
+        # break，导致通用 <KeyPress> 收不到。必须显式绑定更具体的序列。
+        self.bind_all("<Control-Tab>", self._dispatch, add="+")
+        self.bind_all("<Control-Shift-Tab>", self._dispatch, add="+")
+
+        # TNotebook 自带 <Control-Tab>/<Control-Shift-Tab> 类绑定，也会在
+        # 处理器之前执行并 break（切换后还不刷新页面数据）。清空它们。
+        for seq in ("<Control-Tab>", "<Control-Shift-Tab>"):
+            try:
+                self.notebook.bind_class("TNotebook", seq, "")
+            except tk.TclError:
+                pass
+
+    # ------------------------------------------------------------------
+    # 快捷键分发
+    # ------------------------------------------------------------------
+    def _dispatch(self, event):
+        """统一快捷键入口。返回 "break" 表示已处理并阻断后续传递。"""
+        if event.keysym in ("Shift_L", "Shift_R", "Control_L", "Control_R",
+                            "Alt_L", "Alt_R", "Win_L", "Win_R", "Caps_Lock"):
+            return None
+
+        state = int(event.state or 0)
+        ctrl = bool(state & 0x0004)      # Control
+        shift = bool(state & 0x0001)     # Shift
+        alt = bool(state & 0x0008)       # Alt
+        key = (event.keysym or "").lower()
+
+        # ---- Ctrl 组合 ----
+        if ctrl and not alt:
+            if key == "tab":
+                return self._run_shortcut("prev_tab" if shift else "next_tab", event)
+            if not shift and key in ("1", "2", "3", "4", "5"):
+                return self._run_shortcut("tab_" + key, event)
+
+            table = {
+                "n": "add_person" if shift else "new",
+                "o": "open",
+                "s": "save_as" if shift else "save",
+                "i": "import_unordered" if shift else "import_roster",
+                "e": "export",
+                "slash": "shortcuts",
+            }
+            name = table.get(key)
+            if name:
+                return self._run_shortcut(name, event)
+            return None
+
+        # ---- 无修饰键 ----
+        if ctrl or alt:
+            return None
+        if key in ("f1", "f2", "f5", "delete", "space"):
+            return self._run_shortcut(key, event)
+        return None
+
+    def _run_shortcut(self, name: str, event=None):
+        """执行一个快捷键动作，并决定是否阻断事件继续传递。"""
+        # 光标在输入框时只保留文件级快捷键，其余放行给控件（避免影响打字）
+        if self._focus_is_text_input() and name not in ("save", "save_as"):
+            return None
+
+        if name == "next_tab":
+            handler = lambda: self.goto_tab((self._current_tab() + 1) % self._tab_count())
+        elif name == "prev_tab":
+            handler = lambda: self.goto_tab((self._current_tab() - 1) % self._tab_count())
+        elif name.startswith("tab_"):
+            idx = int(name.split("_")[1]) - 1
+            handler = lambda: self.goto_tab(idx)
+        else:
+            handler = {
+                "new": self.new_project,
+                "open": self.open_project,
+                "save": self.save_project,
+                "save_as": self.save_project_as,
+                "import_roster": self.import_roster,
+                "import_unordered": self.import_unordered,
+                "export": self.export_settlement,
+                "add_person": self.add_person,
+                "shortcuts": self.show_shortcuts,
+                "f1": self.show_help,
+                "f2": self.edit_person,
+                "f5": self.refresh_all,
+                "delete": self.delete_person,
+                "space": self.toggle_selected_skip,
+            }.get(name)
+
+        if handler is None:
+            return None
+        try:
+            handler()
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("操作失败", str(exc), parent=self)
+        return "break"
+
+    def _focus_is_text_input(self) -> bool:
+        """当前焦点是否在可编辑的文本控件里。"""
+        try:
+            w = self.focus_get()
+        except (KeyError, tk.TclError):
+            return False
+        if w is None:
+            return False
+        if isinstance(w, (tk.Text, tk.Entry)):
+            return True
+        try:
+            return w.winfo_class() in ("TEntry", "TCombobox", "TSpinbox", "Entry", "Text")
+        except tk.TclError:
+            return False
+
+    def _current_tab(self) -> int:
+        try:
+            return self.notebook.index(self.notebook.select())
+        except tk.TclError:
+            return 0
+
+    def _tab_count(self) -> int:
+        try:
+            return len(self.notebook.tabs()) or 1
+        except tk.TclError:
+            return 1
+
+    def goto_tab(self, idx: int) -> None:
+        """切换到指定页签并刷新其内容。"""
+        try:
+            self.notebook.select(idx)
+        except tk.TclError:
+            return
+        self._on_tab_changed()
+
+    def toggle_selected_skip(self) -> None:
+        """空格键：给选中人员标记 / 取消“今天不订”。"""
+        sid = self._selected_sid_any()
+        if not sid:
+            messagebox.showinfo("提示", "请先选择一名人员，再按空格。", parent=self)
+            return
+
+        today = date.today()
+        if (today.year, today.month) != (self.proj.year, self.proj.month):
+            messagebox.showinfo(
+                "提示",
+                f"今天是 {today.year}年{today.month}月{today.day}日，"
+                f"不在当前工程（{self.proj.year}年{self.proj.month}月）内。",
+                parent=self,
+            )
+            return
+        day = today.day
+        if self.proj.is_closed_day(day):
+            messagebox.showinfo("提示", f"今天（{day}日）是每周休息日，本来就不供餐。", parent=self)
+            return
+
+        person = self.proj.roster[sid]
+        days = set(self.proj.skips.get(sid, set()))
+        if day in days:
+            days.discard(day)
+            action = "已取消今天不订"
+        else:
+            days.add(day)
+            action = "已标记今天不订"
+        if days:
+            self.proj.set_skip(sid, days)
+        else:
+            self.proj.skips.pop(sid, None)
+
+        self.dirty = True
+        self._current_sid = sid
+        self.refresh_all()
+        self._status(f"{person.name}：{action}（{self.proj.month}月{day}日）")
+
+    def _selected_sid_any(self) -> Optional[str]:
+        """按当前页签取选中人员：名单页取 Treeview，不订页取左列表。"""
+        tab = self._current_tab()
+        if tab == 2:
+            sel = self.roster_tree.selection()
+            if sel:
+                return sel[0]
+        if tab == 3:
+            sel = self.person_list.curselection()
+            if sel:
+                idx = sel[0]
+                if 0 <= idx < len(self._person_order):
+                    return self._person_order[idx]
+        if self._current_sid and self._current_sid in self.proj.roster:
+            return self._current_sid
+        return None
 
     # ---------------------------------------------------------------- 数据刷新
     def refresh_all(self) -> None:
@@ -1561,9 +1770,67 @@ class FeeApp(tk.Tk):
             "6. “核算汇总”可查看每人应缴金额，并导出 Excel 核算表（班级/姓名/身份证号/费用）；\n"
             "   右上角“导出时不包括费用为 0 的人”默认勾选，并随工程保存。\n"
             "7. 工程保存为 .cfee 文件，可随时打开继续编辑；\n"
-            "   也可用命令行直接打开：" + _program_name() + " 某工程.cfee",
+            "   也可用命令行直接打开：" + _program_name() + " 某工程.cfee\n"
+            "8. 常用快捷键：Ctrl+S 保存、Ctrl+E 导出、Ctrl+1~5 切换页签、F5 刷新；\n"
+            "   选中人员后按空格可标记 / 取消“今天不订”；按 Ctrl+/ 查看完整列表。",
             parent=self,
         )
+
+    def show_shortcuts(self) -> None:
+        """快捷键一览窗口。"""
+        win = tk.Toplevel(self)
+        win.title("快捷键一览")
+        win.geometry("540x540")
+        win.resizable(False, False)
+
+        body = ttk.Frame(win, padding=14)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text="快捷键", style="Big.TLabel").pack(anchor="w", pady=(0, 10))
+
+        groups = [
+            ("文件", [
+                ("Ctrl+N", "新建工程"),
+                ("Ctrl+O", "打开工程"),
+                ("Ctrl+S", "保存"),
+                ("Ctrl+Shift+S", "另存为"),
+                ("Ctrl+I", "导入名单（Excel/CSV）"),
+                ("Ctrl+Shift+I", "导入本月不订（自由文本）"),
+                ("Ctrl+E", "导出核算表"),
+                ("Alt+F4", "退出"),
+            ]),
+            ("编辑", [
+                ("Ctrl+Shift+N", "添加人员"),
+                ("F2", "编辑选中人员"),
+                ("Delete", "删除选中人员"),
+                ("空格", "标记 / 取消选中人员的“今天不订”"),
+            ]),
+            ("视图", [
+                ("Ctrl+1 ~ Ctrl+5", "切换到第 1~5 个页签"),
+                ("Ctrl+Tab / Ctrl+Shift+Tab", "下一个 / 上一个页签"),
+                ("F5", "刷新全部数据"),
+            ]),
+            ("帮助", [
+                ("F1", "使用说明"),
+                ("Ctrl+/", "快捷键一览"),
+            ]),
+        ]
+
+        for title, items in groups:
+            frame = ttk.LabelFrame(body, text=title, padding=(10, 6))
+            frame.pack(fill="x", pady=(0, 8))
+            for key, desc in items:
+                row = ttk.Frame(frame)
+                row.pack(fill="x", pady=1)
+                ttk.Label(row, text=key, width=26, font=("Consolas", 9, "bold")).pack(side="left")
+                ttk.Label(row, text=desc).pack(side="left")
+
+        ttk.Label(body, text="提示：光标在输入框内时，Delete / F2 / 空格不会触发，避免误操作；保存类快捷键始终有效。",
+                  style="Hint.TLabel", wraplength=490, justify="left").pack(anchor="w", pady=(4, 8))
+        ttk.Button(body, text="关闭", command=win.destroy, width=10).pack(anchor="e")
+
+        win.transient(self)
+        center_window(win, self)
+        win.grab_set()
 
     def show_about(self) -> None:
         messagebox.showinfo(
