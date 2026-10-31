@@ -472,7 +472,12 @@ class FeeApp(tk.Tk):
             pass
         family = "Microsoft YaHei UI"
         base = (family, 10)
-        self.option_add("*Font", base)
+        # 只给文本 / 菜单这类经典 Tk 控件设默认字体。
+        # 不能用 option_add("*Font", base)：这个通配项会同时覆盖 ttk 控件的 -font，
+        # 令 Count.TLabel（38pt）等自定义样式一律退回 10pt，“今日订餐”的大号数字
+        # 和窗口标题都会缩小。
+        self.option_add("*Text.font", base)
+        self.option_add("*Menu.font", base)
         self.option_add("*TCombobox*Listbox.font", base)
         style.configure(".", font=base)
         style.configure("Treeview", rowheight=27, font=base)
