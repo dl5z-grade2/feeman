@@ -1561,7 +1561,7 @@ class FeeApp(tk.Tk):
             "6. “核算汇总”可查看每人应缴金额，并导出 Excel 核算表（班级/姓名/身份证号/费用）；\n"
             "   右上角“导出时不包括费用为 0 的人”默认勾选，并随工程保存。\n"
             "7. 工程保存为 .cfee 文件，可随时打开继续编辑；\n"
-            "   也可用命令行直接打开：python fee_app.py 某工程.cfee",
+            "   也可用命令行直接打开：" + _program_name() + " 某工程.cfee",
             parent=self,
         )
 
@@ -1571,7 +1571,7 @@ class FeeApp(tk.Tk):
             f"{APP_TITLE}\n\n用于按月统计学生/员工的订餐费用。\n"
             "工程文件扩展名：.cfee（JSON 格式）\n"
             "核算表导出：Excel .xlsx（班级 / 姓名 / 身份证号 / 费用）\n\n"
-            "命令行用法：python fee_app.py [工程文件.cfee]",
+            "命令行用法：" + _program_name() + " [工程文件.cfee]",
             parent=self,
         )
 
@@ -1579,6 +1579,13 @@ class FeeApp(tk.Tk):
     def _on_close(self) -> None:
         if self._confirm_discard():
             self.destroy()
+
+
+def _program_name() -> str:
+    """打包后显示 exe 名，源码运行时显示脚本名。"""
+    if getattr(sys, "frozen", False):
+        return os.path.basename(sys.executable)
+    return "python fee_app.py"
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -1589,7 +1596,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args:
         first = args[0].strip().strip('"').strip("'")
         if first in ("-h", "--help", "/?"):
-            print("用法: python fee_app.py [工程文件.cfee]")
+            print(f"用法: {_program_name()} [工程文件.cfee]")
             print("  不带参数启动空白工程；带路径时直接打开该 .cfee 工程。")
             return 0
         project_path = os.path.abspath(os.path.expanduser(first))

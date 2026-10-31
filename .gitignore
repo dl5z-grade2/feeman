@@ -1,13 +1,33 @@
-__pycache__
+# ---- Python ----
+__pycache__/
 __pycache__/**
-venv
-.venv\
-*.png
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---- uv ----
+# 注意：uv.lock 需要提交，不要忽略
+
+# ---- PyInstaller ----
+build/
+dist/
+# fee_app.spec 是手写配置，需要提交；只忽略 PyInstaller 自动生成的 *.spec.bak
+*.spec.bak
+
+# ---- 构建产物 / 临时文件 ----
+*.exe
+*.msi
+*.cfee
 *.xlsx
 *.xls
 *.csv
-build
-dist
-*.spec
-*.cfee
-*.exe
+*.png
+!assets/*.png
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

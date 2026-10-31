@@ -5,13 +5,16 @@
 
 ## 运行
 
+用 [uv](https://docs.astral.sh/uv/) 管理环境，无需手动建虚拟环境：
+
 ```bat
-python fee_app.py                 :: 打开空白工程
-python fee_app.py 某工程.cfee      :: 直接打开指定工程
-python fee_app.py --help           :: 查看命令行用法
+uv sync                           :: 安装依赖（openpyxl + pyinstaller）
+uv run fee_app.py                 :: 打开空白工程
+uv run fee_app.py 某工程.cfee      :: 直接打开指定工程
+uv run fee_app.py --help           :: 查看命令行用法
 ```
 
-依赖：Python 3.8+（已在 3.13 验证）、Tkinter（Windows 自带）、openpyxl（`pip install openpyxl`）。
+也可以直接双击安装后的 `FeeMan.exe`，或双击 `.cfee` 工程文件（安装时会关联）。
 
 ## 文件
 
@@ -19,6 +22,47 @@ python fee_app.py --help           :: 查看命令行用法
 | --- | --- |
 | `fee_core.py` | 核心模型层：工程读写、身份证校验、费用核算、Excel 导入导出，无界面代码，可单独测试 |
 | `fee_app.py` | Tkinter 图形界面 |
+| `pyproject.toml` / `uv.lock` | 依赖声明与锁定 |
+| `fee_app.spec` | PyInstaller 打包配置 |
+| `installer.iss` | Inno Setup 安装脚本（含 `.cfee` 文件关联） |
+| `build.ps1` | 一键构建：同步依赖 → 打包 → 生成安装包 |
+| `assets/app.ico` | 程序图标 |
+
+## 构建与打包
+
+```powershell
+# 一条命令完成全部：uv sync → PyInstaller → Inno Setup
+powershell -ExecutionPolicy Bypass -File build.ps1
+
+# 可选参数
+powershell -ExecutionPolicy Bypass -File build.ps1 -Clean           # 先清空 build/ dist/
+powershell -ExecutionPolicy Bypass -File build.ps1 -SkipInstaller   # 只打包 exe
+```
+
+手动分步执行：
+
+```bat
+uv sync
+uv run pyinstaller fee_app.spec --noconfirm --clean
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+```
+
+产物：
+
+| 路径 | 说明 |
+| --- | --- |
+| `dist\FeeMan\FeeMan.exe` | 免安装程序（onedir，含 `_internal` 依赖） |
+| `dist\FeeMan-Setup-1.0.0.exe` | 安装包（约 10 MB，LZMA2 压缩） |
+
+安装包会：
+
+- 安装到 `%LOCALAPPDATA%\Programs\FeeMan`（`PrivilegesRequired=lowest`，无需管理员）；
+- 可选在桌面创建快捷方式；
+- 可选关联 `.cfee`：写入 `HKCU\Software\Classes\.cfee`，双击工程文件直接用本程序打开，并在「打开方式」列表中注册；
+- 卸载时自动清理文件与注册表项，并刷新资源管理器图标缓存。
+
+> 需要 Inno Setup 6：`winget install JRSoftware.InnoSetup`。语言文件已随仓库提供（`installer\Languages\`），不依赖安装目录自带中文。
+
 
 ## 功能
 
