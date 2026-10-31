@@ -22,6 +22,10 @@ from datetime import date
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Dict, List, Optional
 
+# 嵌入式 Python 用 python311._pth 限制 sys.path，脚本目录不会自动加入；
+# 显式加入，确保能 import 同目录的 fee_core。
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import fee_core
 from fee_core import Person, Project
 

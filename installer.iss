@@ -1,11 +1,15 @@
-; ---------------------------------------------------------------------------
+﻿; ---------------------------------------------------------------------------
 ; 饭费管理系统 安装脚本（Inno Setup 6）
 ;
-; 构建步骤：
-;   1. uv sync
-;   2. uv run pyinstaller fee_app.spec --noconfirm --clean
-;   3. ISCC.exe installer.iss
-;   （或直接运行 build.ps1，上述步骤会自动完成）
+; 安装布局（嵌入式 Python 运行时 + C++ 启动器）：
+;   {app}\FeeMan.exe              C++ 启动器
+;   {app}\fee_app.py / fee_core.py
+;   {app}\bootstrap_runtime.ps1   首次运行下载 Python 3.11.9 embed + openpyxl
+;   {app}\runtime\                预置 Tcl/Tk、tkinter；python.exe 首次运行下载
+;
+; 构建：
+;   powershell -ExecutionPolicy Bypass -File build.ps1
+;   （会先编译 launcher.cpp，再调用本脚本）
 ;
 ; 产物：dist\FeeMan-Setup-1.0.0.exe
 ; ---------------------------------------------------------------------------
@@ -25,29 +29,27 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher={#AppPublisher}
-DefaultDirName={autopf}\{#AppNameEn}
+; 按用户安装，无需管理员
+DefaultDirName={localappdata}\Programs\{#AppNameEn}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
-; 输出
 OutputDir=dist
 OutputBaseFilename={#AppNameEn}-Setup-{#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes
-; 架构与权限
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-; 外观
 WizardStyle=modern
 SetupIconFile=assets\app.ico
 UninstallDisplayIcon={app}\{#AppExeName}
 UninstallDisplayName={#AppName}
-; 系统版本
 MinVersion=10.0
+; 安装目录会加入用户 PATH，需要通知系统环境变量已变化
+ChangesEnvironment=yes
 
 [Languages]
-; 简体中文语言文件随仓库提供（installer\Languages），不依赖 Inno Setup 安装目录里是否有中文
 Name: "chinesesimp"; MessagesFile: "installer\Languages\ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
@@ -56,11 +58,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "associate"; Description: "关联 {#FileAssocExt} 文件（双击直接打开工程）"; GroupDescription: "文件关联"
 
 [Files]
-; 主程序与全部依赖
+; 启动器、Python 源码、引导脚本、预置的 Tcl/Tk/tkinter、文档
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; 文档
-Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
@@ -98,7 +97,9 @@ Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; \
     Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-Type: filesandordirs; Name: "{app}\_internal"
+; 首次运行时下载的 Python、pip、site-packages 及 pycache 不在安装清单里，卸载时一并删除
+Type: filesandordirs; Name: "{app}\runtime"
+Type: filesandordirs; Name: "{app}\__pycache__"
 
 [Code]
 { ---------------------------------------------------------------
@@ -112,21 +113,76 @@ begin
   SHChangeNotify($08000000, $0000, 0, 0);  { SHCNE_ASSOCCHANGED, SHCNF_IDLIST }
 end;
 
+{ ---------------------------------------------------------------
+  用户 PATH：安装时加入安装目录，卸载时移除
+  --------------------------------------------------------------- }
+const
+  EnvironmentKey = 'Environment';
+
+procedure AddToPath();
+var
+  OrigPath, AppDir: string;
+begin
+  AppDir := ExpandConstant('{app}');
+  if not RegQueryStringValue(HKCU, EnvironmentKey, 'Path', OrigPath) then
+    OrigPath := '';
+
+  if Pos(';' + Uppercase(AppDir) + ';', ';' + Uppercase(OrigPath) + ';') = 0 then
+  begin
+    if OrigPath = '' then
+      OrigPath := AppDir
+    else if Copy(OrigPath, Length(OrigPath), 1) = ';' then
+      OrigPath := OrigPath + AppDir
+    else
+      OrigPath := OrigPath + ';' + AppDir;
+    RegWriteExpandStringValue(HKCU, EnvironmentKey, 'Path', OrigPath);
+  end;
+end;
+
+procedure RemoveFromPath();
+var
+  OrigPath, AppDir, Wrapped: string;
+  P: Integer;
+begin
+  if not RegQueryStringValue(HKCU, EnvironmentKey, 'Path', OrigPath) then
+    Exit;
+
+  AppDir := ExpandConstant('{app}');
+  Wrapped := ';' + OrigPath + ';';
+  P := Pos(';' + Uppercase(AppDir) + ';', Uppercase(Wrapped));
+  if P = 0 then
+    Exit;
+
+  Delete(Wrapped, P, Length(AppDir) + 1);
+  if (Length(Wrapped) > 0) and (Wrapped[1] = ';') then
+    Delete(Wrapped, 1, 1);
+  if (Length(Wrapped) > 0) and (Wrapped[Length(Wrapped)] = ';') then
+    Delete(Wrapped, Length(Wrapped), 1);
+
+  if Wrapped = '' then
+    RegDeleteValue(HKCU, EnvironmentKey, 'Path')
+  else
+    RegWriteExpandStringValue(HKCU, EnvironmentKey, 'Path', Wrapped);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
+  begin
     RefreshAssociations();
+    AddToPath();
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
+  begin
+    RemoveFromPath();
     RefreshAssociations();
+  end;
 end;
 
-{ ---------------------------------------------------------------
-  初始化：若已存在更高版本的安装，提示覆盖
-  --------------------------------------------------------------- }
 function InitializeSetup(): Boolean;
 begin
   Result := True;

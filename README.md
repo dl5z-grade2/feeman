@@ -16,6 +16,8 @@ uv run fee_app.py --help           :: 查看命令行用法
 
 也可以直接双击安装后的 `FeeMan.exe`，或双击 `.cfee` 工程文件（安装时会关联）。
 
+安装版首次启动会自动下载 Python 运行时（约 10 MB）并安装 openpyxl，之后离线可用；网络受限时可手动运行安装目录下的 `bootstrap_runtime.bat`。
+
 ## 文件
 
 | 文件 | 说明 |
@@ -23,65 +25,60 @@ uv run fee_app.py --help           :: 查看命令行用法
 | `fee_core.py` | 核心模型层：工程读写、身份证校验、费用核算、Excel 导入导出，无界面代码，可单独测试 |
 | `fee_app.py` | Tkinter 图形界面 |
 | `pyproject.toml` / `uv.lock` | 依赖声明与锁定 |
-| `fee_app.spec` | PyInstaller 打包配置 |
-| `installer.iss` | Inno Setup 安装脚本（含 `.cfee` 文件关联） |
-| `build.ps1` | 一键构建：同步依赖 → 打包 → 生成安装包 |
+| `launcher.cpp` / `launcher.rc` | C++ 启动器源码与图标资源，编译成 `FeeMan.exe` |
+| `bootstrap_runtime.ps1` / `.bat` | 首次运行下载 Python 3.11.9 embed、安装 pip/openpyxl，并验证 tkinter |
+| `runtime/` | 预置的 Tcl/Tk 与 tkinter 组件（`python.exe` 首次运行才下载，不入库） |
+| `fee_app.spec` | 可选 PyInstaller 备用打包配置（默认构建不使用） |
+| `installer.iss` | Inno Setup 安装脚本（含 `.cfee` 文件关联与 PATH） |
+| `build.ps1` | 一键构建：编译启动器 → 组装 `dist\FeeMan` → 生成安装包 |
 | `assets/app.ico` | 程序图标 |
 
 ## 构建与打包
 
-打包固定使用 **Python 3.8.9**（与 CI 一致），避免高版本 Python 打出的 exe 在旧系统上不可用。
+默认安装方案是「嵌入式 Python 运行时 + C++ 启动器」，不再把 Python/Tkinter 打进 exe：
+
+- `launcher.cpp` 编译成 `FeeMan.exe`，启动时检查 `runtime\python.exe`、openpyxl 与 tkinter 组件；
+- 缺失时调用 `bootstrap_runtime.ps1`：下载 Python 3.11.9 embed、启用 site、安装 pip 与 openpyxl；
+- `runtime\` 随安装包分发提取好的 Tcl/Tk 与 tkinter（官方 embed 包不含这些），运行时通过 `TCL_LIBRARY` / `TK_LIBRARY` 定位；
+- 环境就绪后由启动器拉起 `runtime\python.exe fee_app.py`；
+- 安装包把整套文件装到 `%LOCALAPPDATA%\Programs\FeeMan`，并把安装目录加入用户 PATH。
+
+前置工具：
+
+- MinGW-w64（`g++` / `windres`），或 Visual Studio 开发者命令提示符（`cl` / `rc`）；
+- Inno Setup 6（可选，只编安装包）：`winget install JRSoftware.InnoSetup`。
 
 ```powershell
-# 一条命令完成全部：准备 3.8.9 环境 → PyInstaller → Inno Setup
+# 编译启动器 + 组装 dist\FeeMan + 生成安装包
 powershell -ExecutionPolicy Bypass -File build.ps1
 
 # 可选参数
-powershell -ExecutionPolicy Bypass -File build.ps1 -Clean                     # 先清空 build/ dist/
-powershell -ExecutionPolicy Bypass -File build.ps1 -SkipInstaller             # 只打包 exe
-powershell -ExecutionPolicy Bypass -File build.ps1 -PythonVersion 3.13.13     # 指定其它版本
-```
-
-手动分步执行：
-
-```bat
-uv python install 3.8.9
-uv venv .venv-build --python 3.8.9
-uv pip install --python .venv-build\Scripts\python.exe openpyxl "pyinstaller>=6.0"
-.venv-build\Scripts\python.exe -m PyInstaller fee_app.spec --noconfirm --clean
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+powershell -ExecutionPolicy Bypass -File build.ps1 -Clean           # 先清空 build/ dist/
+powershell -ExecutionPolicy Bypass -File build.ps1 -SkipInstaller   # 只组装便携目录
 ```
 
 产物：
 
 | 路径 | 说明 |
 | --- | --- |
-| `dist\FeeMan\FeeMan.exe` | 免安装程序（onedir，含 `_internal` 依赖），3.8.9 版本整目录约 19.7 MB |
-| `dist\FeeMan-Setup-1.0.0.exe` | 安装包（约 8.3 MB，LZMA2 压缩） |
+| `dist\FeeMan\FeeMan.exe` | 便携目录版；首次运行联网下载 Python 运行时 |
+| `dist\FeeMan-Setup-1.0.0.exe` | 安装包（含预置 Tcl/Tk/tkinter，不含 `python.exe`） |
 
 安装包会：
 
 - 安装到 `%LOCALAPPDATA%\Programs\FeeMan`（`PrivilegesRequired=lowest`，无需管理员）；
+- 把安装目录加入当前用户 `PATH`，可在终端直接运行 `FeeMan`；
 - 可选在桌面创建快捷方式；
 - 可选关联 `.cfee`：写入 `HKCU\Software\Classes\.cfee`，双击工程文件直接用本程序打开，并在「打开方式」列表中注册；
-- 卸载时自动清理文件与注册表项，并刷新资源管理器图标缓存。
+- 卸载时删除运行时下载文件、清理 PATH 与注册表项，并刷新资源管理器图标缓存。
 
-> 需要 Inno Setup 6：`winget install JRSoftware.InnoSetup`。语言文件已随仓库提供（`installer\Languages\`），不依赖安装目录自带中文。
+> 首次启动需要联网下载 Python 3.11.9 embed 和 openpyxl；装好后可离线使用。下载脚本会依次尝试华为云 / 淘宝 npm 镜像 / python.org，以及阿里云 / 清华 / 中科大 PyPI 镜像。
 
-## 持续集成
+可选 PyInstaller 备用路线：
 
-`.github/workflows/build.yml` 在 `windows-2022` 上自动构建：
-
-- 触发：推送到 `main` / `master`、PR、打 `v*` 标签、手动 `workflow_dispatch`；
-- 固定 **Python 3.8.9**（`uv python install`），依赖装进独立 venv；
-- 自检导入 → PyInstaller 打包 → `FeeMan.exe --help` 冒烟 → Chocolatey 安装 Inno Setup → 编译安装包；
-- 产出两个 artifact：`FeeMan-Setup-1.0.0.exe` 与 `FeeMan-portable-1.0.0.zip`（免安装版压缩包）；
-- 打 `v*` 标签时自动创建 GitHub Release 并附上这两个文件。
-
-本地复现 CI 构建：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File build.ps1 -Clean
+```bat
+uv sync
+uv run pyinstaller fee_app.spec --noconfirm --clean
 ```
 
 ## 快捷键
