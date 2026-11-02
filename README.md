@@ -26,12 +26,12 @@ uv run fee_app.py --help           :: 查看命令行用法
 | `fee_app.py` | Tkinter 图形界面 |
 | `pyproject.toml` / `uv.lock` | 依赖声明与锁定 |
 | `launcher.cpp` / `launcher.rc` | C++ 启动器源码与图标资源，编译成 `FeeMan.exe` |
-| `bootstrap_runtime.ps1` / `.bat` | 首次运行下载 Python 3.11.9 embed、安装 pip/openpyxl，并验证 tkinter |
-| `runtime/` | 预置的 Tcl/Tk 与 tkinter 组件（`python.exe` 首次运行才下载，不入库） |
+| `bootstrap_runtime.ps1` / `.bat` | 首次运行下载 Python 3.11.9 embed、安装 pip/openpyxl，并校验 tkinter |
+| `runtime/` | 预置 Tkinter 组件：`_tkinter.pyd`、`tcl86t.dll`、`tk86t.dll`、`tcl/`、`tkinter/`（`python.exe` 首次运行才下载，不入库） |
 | `fee_app.spec` | 可选 PyInstaller 备用打包配置（默认构建不使用） |
 | `installer.iss` | Inno Setup 安装脚本（含 `.cfee` 文件关联与 PATH） |
 | `build.ps1` | 一键构建：编译启动器 → 组装 `dist\FeeMan` → 生成安装包 |
-| `assets/app.ico` | 程序图标 |
+| `assets/app.ico` | 程序图标（同时用于 exe、安装程序和 `.cfee` 文件关联） |
 
 ## 构建与打包
 
@@ -39,7 +39,7 @@ uv run fee_app.py --help           :: 查看命令行用法
 
 - `launcher.cpp` 编译成 `FeeMan.exe`，启动时检查 `runtime\python.exe`、openpyxl 与 tkinter 组件；
 - 缺失时调用 `bootstrap_runtime.ps1`：下载 Python 3.11.9 embed、启用 site、安装 pip 与 openpyxl；
-- `runtime\` 随安装包分发提取好的 Tcl/Tk 与 tkinter（官方 embed 包不含这些），运行时通过 `TCL_LIBRARY` / `TK_LIBRARY` 定位；
+- `runtime\` 随安装包分发提取好的 Tcl/Tk 与 tkinter（**官方 embed 包不含 `_tkinter.pyd`**，必须随包），运行时通过 `TCL_LIBRARY` / `TK_LIBRARY` 定位；
 - 环境就绪后由启动器拉起 `runtime\python.exe fee_app.py`；
 - 安装包把整套文件装到 `%LOCALAPPDATA%\Programs\FeeMan`，并把安装目录加入用户 PATH。
 
@@ -62,7 +62,33 @@ powershell -ExecutionPolicy Bypass -File build.ps1 -SkipInstaller   # 只组装�
 | 路径 | 说明 |
 | --- | --- |
 | `dist\FeeMan\FeeMan.exe` | 便携目录版；首次运行联网下载 Python 运行时 |
-| `dist\FeeMan-Setup-1.0.0.exe` | 安装包（含预置 Tcl/Tk/tkinter，不含 `python.exe`） |
+| `dist\FeeMan-Setup-1.0.0.exe` | 安装包（约 4.5 MB，含预置 Tcl/Tk/tkinter，不含 `python.exe`） |
+
+### 安装包内容
+
+`installer.iss` 明确列出随包文件，并在**编译期**校验，缺文件直接报错而不是打出坏包：
+
+```
+{app}\FeeMan.exe                启动器（已内嵌图标）
+{app}\app.ico                   图标
+{app}\fee_app.py / fee_core.py
+{app}\bootstrap_runtime.ps1     首次运行引导
+{app}\bootstrap_runtime.bat     手动重装入口
+{app}\README.md / LICENSE
+{app}\runtime\_tkinter.pyd      tkinter C 扩展（关键，embed 包不自带）
+{app}\runtime\tcl86t.dll        Tcl 运行库
+{app}\runtime\tk86t.dll         Tk 运行库
+{app}\runtime\tcl\tcl8.6\       Tcl 脚本库
+{app}\runtime\tcl\tk8.6\        Tk 脚本库
+{app}\runtime\tkinter\          tkinter 纯 Python 包
+```
+
+不打包 `python.exe` / `python311.dll` / `Lib` / `Scripts`（首次运行下载），安装包因此只有 4.5 MB。
+
+升级行为：
+
+- `UsePreviousAppDir=no`：始终装到可写的 `%LOCALAPPDATA%\Programs\FeeMan`。旧版本曾默认装到 `Program Files`，那里对普通用户只读，bootstrap 无法把 Python 写进 `runtime\`；
+- `[InstallDelete]` 会清掉旧版 PyInstaller 方案遗留的 `_internal\`，避免两套运行时混在一起。
 
 安装包会：
 
@@ -73,6 +99,8 @@ powershell -ExecutionPolicy Bypass -File build.ps1 -SkipInstaller   # 只组装�
 - 卸载时删除运行时下载文件、清理 PATH 与注册表项，并刷新资源管理器图标缓存。
 
 > 首次启动需要联网下载 Python 3.11.9 embed 和 openpyxl；装好后可离线使用。下载脚本会依次尝试华为云 / 淘宝 npm 镜像 / python.org，以及阿里云 / 清华 / 中科大 PyPI 镜像。
+>
+> 排查首次启动失败：在安装目录手动运行 `bootstrap_runtime.bat`，窗口会打印具体失败原因。
 
 可选 PyInstaller 备用路线：
 
@@ -88,7 +116,7 @@ uv run pyinstaller fee_app.spec --noconfirm --clean
 | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` / `Ctrl+Shift+S` | 新建 / 打开 / 保存 / 另存为 |
 | `Ctrl+I` / `Ctrl+Shift+I` / `Ctrl+E` | 导入名单 / 导入本月不订 / 导出核算表 |
 | `Ctrl+Shift+N` / `F2` / `Delete` | 添加人员 / 编辑选中 / 删除选中 |
-| `Ctrl+T` | 标记今天不订 |
+| `空格` | 标记 / 取消选中人员的“今天不订” |
 | `Ctrl+1` ~ `Ctrl+5` | 切换到第 1~5 个页签 |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | 下一个 / 上一个页签（循环） |
 | `F5` | 刷新全部数据 |

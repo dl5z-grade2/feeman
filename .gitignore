@@ -10,6 +10,8 @@ build_*/
 dist/
 dist_*/
 *.spec.bak
+runtime/
+runtime/**
 *.exe
 *.msi
 *.cfee
@@ -43,3 +45,6 @@ runtime/*.pyd
 !runtime/tcl86t.dll
 !runtime/tk86t.dll
 !runtime/_tkinter.pyd
+
+# ---- 工具目录 ----
+.dsh-progress/
