@@ -34,3 +34,12 @@ runtime/python_embed.zip
 runtime/Lib/
 runtime/Scripts/
 runtime/get-pip.py
+runtime/LICENSE.txt
+runtime/python.cat
+# 首次运行解压出来的其它组件（Python DLL/扩展），不需要入库
+runtime/*.dll
+runtime/*.pyd
+# 但 Tkinter 依赖的这两项 DLL 与扩展模块必须随包提交，否则图形界面无法启动
+!runtime/tcl86t.dll
+!runtime/tk86t.dll
+!runtime/_tkinter.pyd

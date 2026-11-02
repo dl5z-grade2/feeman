@@ -12,7 +12,10 @@ static bool IsRuntimeReady(const fs::path& runtimeDir)
     std::error_code ec;
     return fs::exists(runtimeDir / L"python.exe", ec)
         && fs::exists(runtimeDir / L"Lib" / L"site-packages" / L"openpyxl", ec)
+        // 嵌入式 Python 不自带这些，全部由安装包随 runtime 目录预置
         && fs::exists(runtimeDir / L"_tkinter.pyd", ec)
+        && fs::exists(runtimeDir / L"tcl86t.dll", ec)
+        && fs::exists(runtimeDir / L"tk86t.dll", ec)
         && fs::exists(runtimeDir / L"tcl" / L"tcl8.6" / L"init.tcl", ec)
         && fs::exists(runtimeDir / L"tcl" / L"tk8.6" / L"tk.tcl", ec)
         && fs::exists(runtimeDir / L"tkinter" / L"__init__.py", ec);
@@ -103,6 +106,28 @@ int main()
     // 嵌入式 Python 不含 Tcl/Tk，必须显式告诉 tkinter 去哪里找库文件。
     SetEnvironmentVariableW(L"TCL_LIBRARY", (runtimeDir / L"tcl" / L"tcl8.6").wstring().c_str());
     SetEnvironmentVariableW(L"TK_LIBRARY", (runtimeDir / L"tcl" / L"tk8.6").wstring().c_str());
+
+    // _tkinter.pyd 会隐式加载 tcl86t.dll / tk86t.dll，把 runtime 放到 PATH 最前面，
+    // 避免被系统里其它版本的 Tcl/Tk 抢先解析。
+    {
+        std::wstring pathEnv;
+        const DWORD needed = GetEnvironmentVariableW(L"PATH", NULL, 0);
+        if (needed > 0) {
+            pathEnv.resize(needed);
+            const DWORD written = GetEnvironmentVariableW(L"PATH", &pathEnv[0], needed);
+            if (written == 0 || written >= needed)
+                pathEnv.clear();
+            else
+                pathEnv.resize(written);
+        }
+
+        std::wstring newPath = runtimeDir.wstring();
+        if (!pathEnv.empty()) {
+            newPath += L";";
+            newPath += pathEnv;
+        }
+        SetEnvironmentVariableW(L"PATH", newPath.c_str());
+    }
 
     std::wstring command = L"\"" + pythonExe.wstring() + L"\" \"" + mainPy.wstring() + L"\"";
     const std::wstring tail = GetArgumentsTail();
