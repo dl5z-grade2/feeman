@@ -24,6 +24,7 @@ uv run fee_app.py --help           :: 查看命令行用法
 | --- | --- |
 | `fee_core.py` | 核心模型层：工程读写、身份证校验、费用核算、Excel 导入导出，无界面代码，可单独测试 |
 | `fee_app.py` | Tkinter 图形界面 |
+| `fluent_ui.py` | Fluent Design 界面组件库：主题令牌、字体、圆角卡片 / 按钮 / 标签 / 输入框 / 下拉框 / 选项卡 / 滚动条、表格与统计卡片（纯标准库手绘，无第三方依赖） |
 | `pyproject.toml` / `uv.lock` | 依赖声明与锁定 |
 | `launcher.cpp` / `launcher.rc` | C++ 启动器源码与图标资源，编译成 `FeeMan.exe` |
 | `bootstrap_runtime.ps1` / `.bat` | 首次运行下载 Python 3.11.9 embed、安装 pip/openpyxl，并校验 tkinter |
@@ -62,7 +63,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1 -SkipInstaller   # 只组装�
 | 路径 | 说明 |
 | --- | --- |
 | `dist\FeeMan\FeeMan.exe` | 便携目录版；首次运行联网下载 Python 运行时 |
-| `dist\FeeMan-Setup-1.0.0.exe` | 安装包（约 4.5 MB，含预置 Tcl/Tk/tkinter，不含 `python.exe`） |
+| `dist\FeeMan-Setup-1.1.0.exe` | 安装包（约 4.5 MB，含预置 Tcl/Tk/tkinter，不含 `python.exe`） |
 
 ### 安装包内容
 
@@ -71,7 +72,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1 -SkipInstaller   # 只组装�
 ```
 {app}\FeeMan.exe                启动器（已内嵌图标）
 {app}\app.ico                   图标
-{app}\fee_app.py / fee_core.py
+{app}\fee_app.py / fee_core.py / fluent_ui.py
 {app}\bootstrap_runtime.ps1     首次运行引导
 {app}\bootstrap_runtime.bat     手动重装入口
 {app}\README.md / LICENSE
@@ -125,6 +126,21 @@ uv run pyinstaller fee_app.spec --noconfirm --clean
 
 > 光标在输入框内时，`Delete`、`F2` 等不会触发，避免误操作；保存类快捷键在任何位置都有效。
 
+
+## 界面
+
+界面按 Fluent Design（WinUI 3 / Fluent 2 浅色）重做，全部用标准库自绘，不引入第三方 UI 依赖：
+
+- **配色**：`#F3F3F3` 背景 + 白色圆角卡片 + `#0F6CBD` 强调色，与 Windows 11 一致；
+- **字体**：优先 Microsoft YaHei UI，字号 / 字重分层次；
+- **控件**：圆角按钮（accent / standard / subtle / danger）、胶囊式选项卡、标签开关（星期、不订日期）、
+  自绘下拉选择、带强调色描边的输入框、细滚动条；小控件用带 alpha 的抗锯齿 PNG 贴图绘制，圆角平滑；
+- **布局**：顶部为应用栏（标题 + 工程摘要 + 保存 / 设置），工程设置收在一张可折叠卡片里，
+  页签内容用卡片承载；表格行高 36px、表头浅灰、选中行强调色底、隔行浅纹；
+- **细节**：对话框同样走卡片样式，空列表有占位提示，窗口支持高 DPI（自动开启 DPI 感知），
+  Windows 11 下标题栏与应用背景同色。
+
+`fluent_ui.py` 里的 `C`（颜色）、`S()`（DPI 缩放）、`F()`（字体）是全局设计令牌，改配色只需改 `C`。
 
 ## 功能
 

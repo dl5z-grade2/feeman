@@ -20,13 +20,14 @@ import sys
 import tkinter as tk
 from datetime import date
 from tkinter import filedialog, messagebox, simpledialog, ttk
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 # 嵌入式 Python 用 python311._pth 限制 sys.path，脚本目录不会自动加入；
 # 显式加入，确保能 import 同目录的 fee_core。
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import fee_core
+import fluent_ui as ui
 from fee_core import Person, Project
 
 APP_TITLE = "饭费管理系统"
@@ -114,43 +115,52 @@ class PersonDialog(tk.Toplevel):
                  person: Optional[Person] = None, existing_sids=None):
         super().__init__(master)
         self.title(title)
+        self.configure(bg=ui.C.bg)
         self.resizable(False, False)
         self.result: Optional[Person] = None
         self._existing = set(existing_sids or [])
         self._original_sid = person.sid if person else None
-
-        body = ttk.Frame(self, padding=16)
-        body.pack(fill="both", expand=True)
 
         self.sid_var = tk.StringVar(value=person.sid if person else "")
         self.name_var = tk.StringVar(value=person.name if person else "")
         self.id_var = tk.StringVar(value=person.id_card if person else "")
         self.gender_var = tk.StringVar(value=person.gender if person else "")
 
-        def add_row(row: int, label: str, widget: tk.Widget, required: bool = False):
+        card = ui.Card(self, padding=(24, 20))
+        card.pack(fill="both", expand=True, padx=ui.S(14), pady=ui.S(14))
+        body = card.body
+        ui.text_label(body, title, font_key="h2").pack(anchor="w", pady=(0, ui.S(4)))
+        ui.text_label(body, "带 * 的为必填项", font_key="caption", fg=ui.C.text3,
+                      bg=ui.C.card).pack(anchor="w", pady=(0, ui.S(16)))
+
+        def add_field(label: str, widget: tk.Widget, required: bool = False) -> None:
+            row = ui.Surface(body, bg=ui.C.card)
+            row.pack(fill="x", pady=(0, ui.S(14)))
             text = label + (" *" if required else "")
-            ttk.Label(body, text=text).grid(row=row, column=0, sticky="w", pady=6, padx=(0, 12))
-            widget.grid(row=row, column=1, sticky="ew", pady=6)
+            ui.text_label(row, text, font_key="caption", fg=ui.C.text3).pack(
+                anchor="w", pady=(0, ui.S(5)))
+            widget.pack(fill="x")
 
-        self.sid_entry = ttk.Entry(body, textvariable=self.sid_var, width=34)
-        add_row(0, "学号", self.sid_entry, True)
-        self.name_entry = ttk.Entry(body, textvariable=self.name_var, width=34)
-        add_row(1, "姓名", self.name_entry, True)
-        self.id_entry = ttk.Entry(body, textvariable=self.id_var, width=34)
-        add_row(2, "身份证号", self.id_entry)
-        self.gender_box = ttk.Combobox(body, textvariable=self.gender_var, width=32,
-                                       values=["", "男", "女"], state="readonly")
-        add_row(3, "性别", self.gender_box)
+        self.sid_entry = ui.FluentEntry(body, self.sid_var, width=34)
+        add_field("学号", self.sid_entry, True)
+        self.name_entry = ui.FluentEntry(body, self.name_var, width=34)
+        add_field("姓名", self.name_entry, True)
+        self.id_entry = ui.FluentEntry(body, self.id_var, width=34)
+        add_field("身份证号", self.id_entry)
+        self.gender_box = ui.FluentSelect(body, self.gender_var, ["", "男", "女"])
+        add_field("性别", self.gender_box)
 
-        ttk.Label(body, text="身份证可留空；填写时会校验 18 位校验码，并可自动识别性别。",
-                  style="Hint.TLabel").grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 10))
+        ui.text_label(body, "身份证可留空；填写时会校验 18 位校验码，并可自动识别性别。",
+                      font_key="caption", fg=ui.C.text3, bg=ui.C.card,
+                      wrap=380).pack(anchor="w", pady=(0, ui.S(18)))
 
-        btns = ttk.Frame(body)
-        btns.grid(row=5, column=0, columnspan=2, sticky="e")
-        ttk.Button(btns, text="确定", style="Accent.TButton", command=self._ok, width=10).pack(side="left", padx=4)
-        ttk.Button(btns, text="取消", command=self._cancel, width=10).pack(side="left")
+        btns = ui.Surface(body, bg=ui.C.card)
+        btns.pack(fill="x")
+        ui.FluentButton(btns, "确定", kind="accent", command=self._ok,
+                        min_width=ui.S(88)).pack(side="right")
+        ui.FluentButton(btns, "取消", command=self._cancel,
+                        min_width=ui.S(76)).pack(side="right", padx=(0, ui.S(8)))
 
-        body.columnconfigure(1, weight=1)
         self.bind("<Return>", lambda e: self._ok())
         self.bind("<Escape>", lambda e: self._cancel())
         self.transient(master)
@@ -203,29 +213,32 @@ class TextImportDialog(tk.Toplevel):
     def __init__(self, master: tk.Misc):
         super().__init__(master)
         self.title("从文本粘贴导入名单")
+        self.configure(bg=ui.C.bg)
+        self.geometry(f"{ui.S(820)}x{ui.S(580)}")
         self.resizable(True, True)
         self.result: Optional[List[Person]] = None
         self.warnings: List[str] = []
 
-        body = ttk.Frame(self, padding=16)
-        body.pack(fill="both", expand=True)
-        ttk.Label(body, text="每行一人，列之间用空格 / 制表符 / 逗号分隔：学号 姓名 [身份证] [性别]",
-                  style="Hint.TLabel").pack(anchor="w", pady=(0, 8))
+        card = ui.Card(self, padding=(22, 18))
+        card.pack(fill="both", expand=True, padx=ui.S(14), pady=ui.S(14))
+        body = card.body
+        ui.text_label(body, "从文本粘贴导入名单", font_key="h2").pack(anchor="w")
+        ui.text_label(body, "每行一人，列之间用空格 / 制表符 / 逗号分隔：学号 姓名 [身份证] [性别]",
+                      font_key="caption", fg=ui.C.text3, bg=ui.C.card).pack(
+                          anchor="w", pady=(ui.S(4), ui.S(10)))
 
-        text_frame = ttk.Frame(body)
-        text_frame.pack(fill="both", expand=True)
-        self.text = tk.Text(text_frame, width=72, height=14, wrap="none", undo=True)
-        yscroll = ttk.Scrollbar(text_frame, orient="vertical", command=self.text.yview)
-        self.text.configure(yscrollcommand=yscroll.set)
-        self.text.pack(side="left", fill="both", expand=True)
-        yscroll.pack(side="right", fill="y")
+        area = ui.TextArea(body, height=320)
+        area.pack(fill="both", expand=True)
+        self.text = area.text
 
-        btns = ttk.Frame(body)
-        btns.pack(fill="x", pady=(10, 0))
-        ttk.Label(btns, text="示例：20240001 张三 110101199003071234 男",
-                  style="Hint.TLabel").pack(side="left")
-        ttk.Button(btns, text="取消", command=self.destroy, width=10).pack(side="right", padx=4)
-        ttk.Button(btns, text="导入", style="Accent.TButton", command=self._ok, width=10).pack(side="right")
+        btns = ui.Surface(body, bg=ui.C.card)
+        btns.pack(fill="x", pady=(ui.S(12), 0))
+        ui.text_label(btns, "示例：20240001 张三 110101199003071234 男",
+                      font_key="caption", fg=ui.C.text3).pack(side="left")
+        ui.FluentButton(btns, "导入", kind="accent", command=self._ok,
+                        min_width=ui.S(88)).pack(side="right")
+        ui.FluentButton(btns, "取消", command=self.destroy,
+                        min_width=ui.S(76)).pack(side="right", padx=(0, ui.S(8)))
 
         self.transient(master)
         center_window(self, master)
@@ -257,80 +270,86 @@ class UnorderedImportDialog(tk.Toplevel):
     def __init__(self, master: tk.Misc, proj: Project):
         super().__init__(master)
         self.title("导入本月不订（自由文本）")
-        self.geometry("820x620")
+        self.configure(bg=ui.C.bg)
+        self.geometry(f"{ui.S(1000)}x{ui.S(700)}")
+        self.minsize(ui.S(840), ui.S(580))
         self.proj = proj
         self.result: Optional[List[Dict]] = None
         self.warnings: List[str] = []
 
-        body = ttk.Frame(self, padding=14)
-        body.pack(fill="both", expand=True)
+        card = ui.Card(self, padding=(22, 16))
+        card.pack(fill="both", expand=True, padx=ui.S(14), pady=ui.S(14))
+        body = card.body
 
-        ttk.Label(
-            body,
-            text="每行一人，格式不限。示例：44号范付璐10月不订午餐、晚餐、周六餐；"
-                 "陈心怡不订所有餐；赵思琪只订午餐",
-            style="Hint.TLabel", wraplength=780, justify="left",
-        ).pack(anchor="w", pady=(0, 8))
+        head = ui.Surface(body, bg=ui.C.card)
+        head.pack(fill="x")
+        ui.text_label(head, "导入本月不订（自由文本）", font_key="h2").pack(anchor="w")
+        ui.text_label(
+            head,
+            "每行一人，格式不限。示例：44号范付璐10月不订午餐、晚餐、周六餐；"
+            "陈心怡不订所有餐；赵思琪只订午餐",
+            font_key="caption", fg=ui.C.text3, bg=ui.C.card, wrap=880,
+        ).pack(anchor="w", pady=(ui.S(4), ui.S(12)))
 
         # 数据中只保留这些餐别的不订记录；未勾选的餐别一律视为照常订餐
-        keep_box = ttk.LabelFrame(
-            body, text="只记录这些餐别的不订（未勾选的餐别一律视为照常订餐，文本里提到也不记录）", padding=8)
-        keep_box.pack(fill="x", pady=(0, 8))
+        keep_box = ui.Card(body, padding=(14, 10), fill=ui.C.card_alt, border=ui.C.border)
+        keep_box.pack(fill="x", pady=(0, ui.S(10)))
+        ui.text_label(keep_box.body, "只记录这些餐别的不订（未勾选的餐别一律视为照常订餐，文本里提到也不记录）",
+                      font_key="caption", fg=ui.C.text3, bg=ui.C.card_alt).pack(anchor="w", pady=(0, ui.S(6)))
+        meal_row = ui.Surface(keep_box.body, bg=ui.C.card_alt)
+        meal_row.pack(fill="x")
         self.meal_vars: Dict[str, tk.BooleanVar] = {}
         for meal in fee_core._ALL_MEALS:
             var = tk.BooleanVar(value=True)
             self.meal_vars[meal] = var
-            ttk.Checkbutton(keep_box, text=meal, variable=var,
-                            command=self._on_keep_changed).pack(side="left", padx=(0, 16))
+            ui.FluentCheck(meal_row, meal, var, kind="chip",
+                           command=self._on_keep_changed).pack(side="left", padx=(0, ui.S(8)))
         self.keep_hint_var = tk.StringVar()
-        ttk.Label(keep_box, textvariable=self.keep_hint_var, style="Hint.TLabel").pack(side="left", padx=(8, 0))
+        ui.text_label(meal_row, textvariable=self.keep_hint_var, font_key="caption",
+                      fg=ui.C.text3, bg=ui.C.card_alt).pack(side="left", padx=(ui.S(8), 0))
 
         self.replace_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(body, text="覆盖这些人员的原有逐日不订记录（默认与原有记录合并）",
-                        variable=self.replace_var).pack(anchor="w", pady=(0, 8))
+        ui.FluentCheck(body, "覆盖这些人员的原有逐日不订记录（默认与原有记录合并）",
+                       self.replace_var).pack(anchor="w", pady=(0, ui.S(10)))
 
-        panes = ttk.Panedwindow(body, orient="horizontal")
-        panes.pack(fill="both", expand=True)
+        cols = ui.Surface(body, bg=ui.C.card)
+        cols.pack(fill="both", expand=True)
+        cols.columnconfigure(0, weight=3, uniform="col")
+        cols.columnconfigure(1, weight=2, uniform="col")
+        cols.rowconfigure(0, weight=1)
 
-        left = ttk.Frame(panes, padding=(0, 0, 8, 0))
-        text_frame = ttk.Frame(left)
-        text_frame.pack(fill="both", expand=True)
-        self.text = tk.Text(text_frame, width=46, height=15, wrap="word", undo=True)
-        yscroll = ttk.Scrollbar(text_frame, orient="vertical", command=self.text.yview)
-        self.text.configure(yscrollcommand=yscroll.set)
-        self.text.pack(side="left", fill="both", expand=True)
-        yscroll.pack(side="right", fill="y")
+        left = ui.Surface(cols, bg=ui.C.card)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, ui.S(12)))
+        area = ui.TextArea(left, height=240)
+        area.pack(fill="both", expand=True)
+        self.text = area.text
         self.text.insert("1.0", SAMPLE_UNORDERED)
-        left_btns = ttk.Frame(left)
-        left_btns.pack(fill="x", pady=(8, 0))
-        ttk.Button(left_btns, text="从文件读取...", command=self._load_file).pack(side="left")
-        ttk.Button(left_btns, text="解析预览", style="Accent.TButton",
-                   command=self._preview).pack(side="left", padx=(8, 0))
-        panes.add(left, weight=3)
+        left_btns = ui.Surface(left, bg=ui.C.card)
+        left_btns.pack(fill="x", pady=(ui.S(10), 0))
+        ui.FluentButton(left_btns, "解析预览", kind="accent", command=self._preview,
+                        min_width=ui.S(96)).pack(side="left")
+        ui.FluentButton(left_btns, "从文件读取...", command=self._load_file).pack(
+            side="left", padx=(ui.S(8), 0))
 
-        right = ttk.Frame(panes, padding=(8, 0, 0, 0))
-        ttk.Label(right, text="解析结果").pack(anchor="w")
-        tree_wrap = ttk.Frame(right)
-        tree_wrap.pack(fill="both", expand=True, pady=(6, 0))
-        columns = ("name", "meals", "days")
-        self.preview_tree = ttk.Treeview(tree_wrap, columns=columns, show="headings", height=12)
-        for c, (t, w) in {"name": ("姓名", 90), "meals": ("不订餐别", 130), "days": ("不订天数", 80)}.items():
-            self.preview_tree.heading(c, text=t)
-            self.preview_tree.column(c, width=w, anchor="center" if c != "meals" else "w")
-        ys = ttk.Scrollbar(tree_wrap, orient="vertical", command=self.preview_tree.yview)
-        self.preview_tree.configure(yscrollcommand=ys.set)
-        self.preview_tree.pack(side="left", fill="both", expand=True)
-        ys.pack(side="right", fill="y")
-        panes.add(right, weight=2)
+        self.preview_card = ui.TableCard(
+            cols,
+            {"name": ("姓名", 90, "w"), "meals": ("不订餐别", 150, "w"),
+             "days": ("不订天数", 80, "center")},
+            title="解析结果", empty_text="输入文本后点击“解析预览”",
+            border=ui.C.border_strong)
+        self.preview_card.grid(row=0, column=1, sticky="nsew")
+        self.preview_tree = self.preview_card.tree
 
         self.info_var = tk.StringVar(value="输入文本后点击“解析预览”。")
-        ttk.Label(body, textvariable=self.info_var, style="Hint.TLabel").pack(anchor="w", pady=(8, 0))
+        ui.text_label(body, textvariable=self.info_var, font_key="caption",
+                      fg=ui.C.text3, bg=ui.C.card).pack(anchor="w", pady=(ui.S(10), 0))
 
-        btns = ttk.Frame(body)
-        btns.pack(fill="x", pady=(10, 0))
-        ttk.Button(btns, text="取消", command=self.destroy, width=10).pack(side="right", padx=4)
-        ttk.Button(btns, text="应用到工程", style="Accent.TButton",
-                   command=self._apply, width=12).pack(side="right")
+        btns = ui.Surface(body, bg=ui.C.card)
+        btns.pack(fill="x", pady=(ui.S(10), 0))
+        ui.FluentButton(btns, "应用到工程", kind="accent", command=self._apply,
+                        min_width=ui.S(104)).pack(side="right")
+        ui.FluentButton(btns, "取消", command=self.destroy,
+                        min_width=ui.S(76)).pack(side="right", padx=(0, ui.S(8)))
 
         self._on_keep_changed()
 
@@ -400,6 +419,8 @@ class UnorderedImportDialog(tk.Toplevel):
         self.preview_tree.delete(*self.preview_tree.get_children())
         for item in results:
             self.preview_tree.insert("", "end", values=(item["name"], item["note"] or "—", len(item["days"])))
+        self.preview_card.set_empty(not results, "没有识别到人员")
+        self.preview_card.set_subtitle(f"{len(results)} 人")
         tip = f"识别到 {len(results)} 人"
         drop = self.dropped_meals()
         if drop:
@@ -428,6 +449,49 @@ class UnorderedImportDialog(tk.Toplevel):
         self.destroy()
 
 
+class _PersonListAdapter:
+    """把单列 Treeview 包成 Listbox 的常用接口，让“每日不订”页风格统一。"""
+
+    def __init__(self, tree: ttk.Treeview, empty_label: tk.Label) -> None:
+        self._tree = tree
+        self._empty = empty_label
+        self._empty_visible = False
+
+    def delete(self, first: Any, last: Any = None) -> None:
+        self._tree.delete(*self._tree.get_children())
+
+    def insert(self, index: Any, text: str) -> None:
+        self._tree.insert("", "end", values=(text,))
+
+    def selection_set(self, index: int) -> None:
+        children = self._tree.get_children()
+        if 0 <= index < len(children):
+            self._tree.selection_set(children[index])
+
+    def curselection(self) -> Tuple[int, ...]:
+        selected = self._tree.selection()
+        if not selected:
+            return ()
+        children = self._tree.get_children()
+        try:
+            return (children.index(selected[0]),)
+        except ValueError:
+            return ()
+
+    def see(self, index: int) -> None:
+        children = self._tree.get_children()
+        if 0 <= index < len(children):
+            self._tree.see(children[index])
+
+    def set_empty(self, visible: bool) -> None:
+        if visible and not self._empty_visible:
+            self._empty.place(relx=0.5, rely=0.5, anchor="center")
+            self._empty_visible = True
+        elif not visible and self._empty_visible:
+            self._empty.place_forget()
+            self._empty_visible = False
+
+
 # ---------------------------------------------------------------------------
 # 主窗口
 # ---------------------------------------------------------------------------
@@ -438,62 +502,51 @@ class FeeApp(tk.Tk):
         self.proj = Project(year=date.today().year, month=date.today().month)
         self.path: Optional[str] = None
         self.dirty = False
+        self._settings_open = True
 
         self._day_vars: Dict[int, tk.BooleanVar] = {}
-        self._day_cbs: Dict[int, ttk.Checkbutton] = {}
+        self._day_cbs: Dict[int, ui.FluentCheck] = {}
         self._person_order: List[str] = []
         self._current_sid: Optional[str] = None
         self._loading_skip = False
         self._weekday_vars: Dict[int, tk.BooleanVar] = {}
 
         self.title(APP_TITLE)
-        self.geometry("1140x760")
-        self.minsize(980, 660)
+        self.configure(bg=ui.C.bg)
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        width = min(ui.S(1200), max(screen_w - ui.S(80), ui.S(720)))
+        height = min(ui.S(800), max(screen_h - ui.S(130), ui.S(520)))
+        self.geometry(f"{width}x{height}")
+        self.minsize(min(ui.S(1040), width), min(ui.S(700), height))
         self._build_style()
+        self._apply_app_icon()
         self._build_menu()
         self._build_header()
+        self._build_status()      # 先占住底部，避免被内容挤掉
         self._build_notebook()
-        self._build_status()
         self._bind_shortcuts()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.refresh_all()
         center_window(self)
+        self.after(120, lambda: ui.style_titlebar(self))
 
         # 命令行传入工程文件时直接打开（不弹“是否保存”确认）
         if project_path:
             self.after(80, lambda: self.load_from_path(project_path, quiet=False))
 
-    # ---------------------------------------------------------------- 样式
-    def _build_style(self) -> None:
-        style = ttk.Style(self)
+    def _apply_app_icon(self) -> None:
+        icon = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "app.ico")
         try:
-            themes = style.theme_names()
-            if "vista" in themes:
-                style.theme_use("vista")
-            elif "clam" in themes:
-                style.theme_use("clam")
+            if os.path.exists(icon):
+                self.iconbitmap(icon)
         except tk.TclError:
             pass
-        family = "Microsoft YaHei UI"
-        base = (family, 10)
-        # 只给文本 / 菜单这类经典 Tk 控件设默认字体。
-        # 不能用 option_add("*Font", base)：这个通配项会同时覆盖 ttk 控件的 -font，
-        # 令 Count.TLabel（38pt）等自定义样式一律退回 10pt，“今日订餐”的大号数字
-        # 和窗口标题都会缩小。
-        self.option_add("*Text.font", base)
-        self.option_add("*Menu.font", base)
-        self.option_add("*TCombobox*Listbox.font", base)
-        style.configure(".", font=base)
-        style.configure("Treeview", rowheight=27, font=base)
-        style.configure("Treeview.Heading", font=(family, 10, "bold"))
-        style.configure("Title.TLabel", font=(family, 15, "bold"))
-        style.configure("Big.TLabel", font=(family, 12, "bold"))
-        style.configure("Hint.TLabel", foreground="#707070")
-        style.configure("Money.TLabel", font=(family, 11, "bold"), foreground="#B00020")
-        style.configure("Count.TLabel", font=(family, 38, "bold"), foreground="#1A7F37")
-        style.configure("CountUnit.TLabel", font=(family, 13, "bold"), foreground="#1A7F37")
-        style.configure("Accent.TButton", font=(family, 10, "bold"))
-        style.configure("Toolbar.TFrame", padding=(0, 6))
+
+
+    # ---------------------------------------------------------------- 样式
+    def _build_style(self) -> None:
+        ui.init(self)
 
     # ---------------------------------------------------------------- 菜单
     def _build_menu(self) -> None:
@@ -553,70 +606,130 @@ class FeeApp(tk.Tk):
 
     # ---------------------------------------------------------------- 顶部
     def _build_header(self) -> None:
-        outer = ttk.Frame(self, padding=(14, 12, 14, 6))
-        outer.pack(fill="x")
+        bar = ui.Surface(self)
+        bar.pack(fill="x", padx=ui.S(18), pady=(ui.S(14), ui.S(2)))
 
-        ttk.Label(outer, text="饭费管理", style="Title.TLabel").grid(row=0, column=0, rowspan=3, sticky="nw", padx=(0, 22), pady=(2, 0))
+        ui.BrandTile(bar, "¥", size=40).pack(side="left", padx=(0, ui.S(12)))
 
-        ttk.Label(outer, text="工程名称").grid(row=0, column=1, sticky="e", padx=(0, 6))
+        brand = ui.Surface(bar)
+        brand.pack(side="left", fill="y")
+        ui.text_label(brand, "饭费管理系统", font_key="h1").pack(anchor="w")
+        self.brand_sub_var = tk.StringVar()
+        ui.text_label(brand, textvariable=self.brand_sub_var, font_key="caption",
+                      fg=ui.C.text3).pack(anchor="w", pady=(ui.S(2), 0))
+
+        actions = ui.Surface(bar)
+        actions.pack(side="right")
+        self.save_btn = ui.FluentButton(actions, "保存工程", kind="accent",
+                                        command=self.save_project, min_width=ui.S(96))
+        self.save_btn.pack(side="right")
+        self.settings_btn = ui.FluentButton(actions, "收起设置", kind="standard",
+                                            command=self._toggle_settings, min_width=ui.S(88))
+        self.settings_btn.pack(side="right", padx=(0, ui.S(8)))
+
+        # 工程设置卡片（可折叠）：直接挂在窗口上，展开时插到页签容器之前
+        self.tab_host = ui.Surface(self)
+        self.tab_host.pack(fill="both", expand=True)
+        self.settings_card = self._build_settings_card(self)
+        self.settings_card.pack(fill="x", padx=ui.S(18), pady=(ui.S(8), 0),
+                                before=self.tab_host)
+
+    def _build_settings_card(self, master: tk.Misc) -> ui.Card:
+        card = ui.Card(master, padding=(18, 14), title="工程设置")
         self.title_var = tk.StringVar()
-        ttk.Entry(outer, textvariable=self.title_var, width=24).grid(row=0, column=2, sticky="w")
-
-        ttk.Label(outer, text="班级").grid(row=0, column=3, sticky="e", padx=(12, 6))
         self.class_var = tk.StringVar()
-        ttk.Entry(outer, textvariable=self.class_var, width=14).grid(row=0, column=4, columnspan=2, sticky="w")
-
-        ttk.Label(outer, text="核算月份").grid(row=0, column=6, sticky="e", padx=(14, 6))
         self.year_var = tk.StringVar()
-        years = [str(y) for y in range(date.today().year - 5, date.today().year + 6)]
-        ttk.Combobox(outer, textvariable=self.year_var, width=7, values=years).grid(row=0, column=7, sticky="w")
-        ttk.Label(outer, text="年").grid(row=0, column=8, sticky="w", padx=(2, 4))
         self.month_var = tk.StringVar()
-        ttk.Combobox(outer, textvariable=self.month_var, width=4, state="readonly",
-                     values=[str(m) for m in range(1, 13)]).grid(row=0, column=9, sticky="w")
-        ttk.Label(outer, text="月").grid(row=0, column=10, sticky="w", padx=(2, 6))
-
-        ttk.Label(outer, text="全月单价").grid(row=1, column=1, sticky="e", padx=(0, 6), pady=(6, 0))
         self.price_var = tk.StringVar()
-        ttk.Entry(outer, textvariable=self.price_var, width=10).grid(row=1, column=2, sticky="w", pady=(6, 0))
-        ttk.Label(outer, text="元 / 天（0 表示未设置）", style="Hint.TLabel").grid(
-            row=1, column=3, columnspan=8, sticky="w", pady=(6, 0))
 
-        # 每周休息日（这些天单价为 0、不计入订餐天数）
-        ttk.Label(outer, text="每周休息日").grid(row=2, column=1, sticky="e", padx=(0, 6), pady=(6, 0))
-        wd_box = ttk.Frame(outer)
-        wd_box.grid(row=2, column=2, columnspan=9, sticky="w", pady=(6, 0))
+        ui.FluentButton(card.actions, "应用设置", kind="accent",
+                        command=self.apply_header, min_width=ui.S(88)).pack(side="right")
+
+        row = ui.Surface(card.body, bg=ui.C.card)
+        row.pack(fill="x")
+
+        def field(label: str, factory, gap: int = 18) -> None:
+            cell = ui.Surface(row, bg=ui.C.card)
+            cell.pack(side="left", padx=(0, ui.S(gap)))
+            ui.text_label(cell, label, font_key="caption", fg=ui.C.text3).pack(
+                anchor="w", pady=(0, ui.S(4)))
+            factory(cell).pack(anchor="w")
+
+        field("工程名称", lambda m: ui.FluentEntry(m, self.title_var, width=20))
+        field("班级", lambda m: ui.FluentEntry(m, self.class_var, width=14))
+
+        # 核算月份：年 / 月 两个下拉
+        year_cell = ui.Surface(row, bg=ui.C.card)
+        year_cell.pack(side="left", padx=(0, ui.S(18)))
+        ui.text_label(year_cell, "核算月份", font_key="caption",
+                      fg=ui.C.text3).pack(anchor="w", pady=(0, ui.S(4)))
+        month_row = ui.Surface(year_cell, bg=ui.C.card)
+        month_row.pack(anchor="w")
+        years = [str(y) for y in range(date.today().year - 10, date.today().year + 11)]
+        self.year_select = ui.FluentSelect(month_row, self.year_var, years, width=ui.S(96))
+        self.year_select.pack(side="left")
+        ui.text_label(month_row, "年", font_key="body", fg=ui.C.text2).pack(
+            side="left", padx=(ui.S(6), ui.S(10)))
+        self.month_select = ui.FluentSelect(month_row, self.month_var,
+                                            [str(m) for m in range(1, 13)], width=ui.S(76))
+        self.month_select.pack(side="left")
+        ui.text_label(month_row, "月", font_key="body", fg=ui.C.text2).pack(
+            side="left", padx=(ui.S(6), 0))
+
+        price_cell = ui.Surface(row, bg=ui.C.card)
+        price_cell.pack(side="left")
+        ui.text_label(price_cell, "全月单价", font_key="caption",
+                      fg=ui.C.text3).pack(anchor="w", pady=(0, ui.S(4)))
+        price_row = ui.Surface(price_cell, bg=ui.C.card)
+        price_row.pack(anchor="w")
+        ui.FluentEntry(price_row, self.price_var, width=8).pack(side="left")
+        ui.text_label(price_row, "元 / 天（0 表示未设置）", font_key="body",
+                      fg=ui.C.text2).pack(side="left", padx=(ui.S(6), 0))
+
+        rest = ui.Surface(card.body, bg=ui.C.card)
+        rest.pack(fill="x", pady=(ui.S(12), 0))
+        ui.text_label(rest, "每周休息日", font_key="caption", fg=ui.C.text3).pack(
+            side="left", padx=(0, ui.S(12)))
         for idx, name in enumerate(WEEKDAYS_CN):
             var = tk.BooleanVar(value=(idx in self.proj.skip_weekdays))
             self._weekday_vars[idx] = var
-            ttk.Checkbutton(wd_box, text=name, variable=var,
-                            command=self._on_weekday_toggle).pack(side="left", padx=(0, 6))
-        ttk.Label(wd_box, text="（勾选表示该星期不供餐，价格 0）", style="Hint.TLabel").pack(side="left", padx=(6, 0))
+            ui.FluentCheck(rest, name, var, kind="chip",
+                           command=self._on_weekday_toggle).pack(side="left",
+                                                                padx=(0, ui.S(6)))
+        ui.text_label(rest, "勾选表示该星期不供餐，价格按 0 计。", font_key="caption",
+                      fg=ui.C.text3).pack(side="left", padx=(ui.S(8), 0))
+        return card
 
-        btn_box = ttk.Frame(outer)
-        btn_box.grid(row=0, column=11, rowspan=3, sticky="ne", padx=(16, 0))
-        ttk.Button(btn_box, text="应用设置", style="Accent.TButton", command=self.apply_header, width=11).pack(side="left", padx=4)
-        ttk.Button(btn_box, text="保存工程", command=self.save_project, width=11).pack(side="left")
-
-        outer.columnconfigure(12, weight=1)
-        ttk.Separator(self, orient="horizontal").pack(fill="x", padx=14, pady=(0, 4))
+    def _toggle_settings(self) -> None:
+        self._settings_open = not self._settings_open
+        if self._settings_open:
+            self.settings_card.pack(fill="x", padx=ui.S(18), pady=(ui.S(8), 0),
+                                    before=self.tab_host)
+            self.settings_btn.set_text("收起设置")
+            self._status("已展开工程设置")
+        else:
+            self.settings_card.pack_forget()
+            self.settings_btn.set_text("工程设置")
+            self._status("已收起工程设置")
+        # pack 顺序变化后立即重算几何，避免这一帧内容被挤压/裁掉
+        self.update_idletasks()
+        self.update()
 
     # ---------------------------------------------------------------- 选项卡
     def _build_notebook(self) -> None:
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill="both", expand=True, padx=14, pady=(4, 6))
+        self.notebook = ui.TabView(self.tab_host)
+        self.notebook.pack(fill="both", expand=True, padx=ui.S(18), pady=(ui.S(10), ui.S(6)))
 
-        self.tab_today = ttk.Frame(self.notebook, padding=10)
-        self.tab_days = ttk.Frame(self.notebook, padding=10)
-        self.tab_roster = ttk.Frame(self.notebook, padding=10)
-        self.tab_skip = ttk.Frame(self.notebook, padding=10)
-        self.tab_summary = ttk.Frame(self.notebook, padding=10)
+        self.tab_today = ui.Surface(self.notebook.host)
+        self.tab_days = ui.Surface(self.notebook.host)
+        self.tab_roster = ui.Surface(self.notebook.host)
+        self.tab_skip = ui.Surface(self.notebook.host)
+        self.tab_summary = ui.Surface(self.notebook.host)
 
-        self.notebook.add(self.tab_today, text="  今日订餐  ")
-        self.notebook.add(self.tab_days, text="  每日单价  ")
-        self.notebook.add(self.tab_roster, text="  人员名单  ")
-        self.notebook.add(self.tab_skip, text="  每日不订  ")
-        self.notebook.add(self.tab_summary, text="  核算汇总  ")
+        for page, name in ((self.tab_today, "今日订餐"), (self.tab_days, "每日单价"),
+                           (self.tab_roster, "人员名单"), (self.tab_skip, "每日不订"),
+                           (self.tab_summary, "核算汇总")):
+            self.notebook.add(page, name)
 
         self._build_tab_today()
         self._build_tab_days()
@@ -627,52 +740,48 @@ class FeeApp(tk.Tk):
 
     # -- 今日订餐 ------------------------------------------------------
     def _build_tab_today(self) -> None:
-        bar = ttk.Frame(self.tab_today)
-        bar.pack(fill="x", pady=(0, 6))
-        ttk.Button(bar, text="刷新", command=self.refresh_today, width=8).pack(side="left", padx=(0, 6))
-        ttk.Label(bar, text="统计口径：当天供餐且未标记“不订”的人数",
-                  style="Hint.TLabel").pack(side="left", padx=(6, 0))
+        head = ui.Surface(self.tab_today)
+        head.pack(fill="x", pady=(0, ui.S(10)))
+        ui.text_label(head, "今日订餐", font_key="h2").pack(side="left")
         self.today_date_var = tk.StringVar()
-        ttk.Label(bar, textvariable=self.today_date_var, style="Hint.TLabel").pack(side="right")
+        ui.text_label(head, textvariable=self.today_date_var, font_key="caption",
+                      fg=ui.C.text3).pack(side="left", padx=(ui.S(10), 0))
+        ui.FluentButton(head, "刷新", kind="subtle", command=self.refresh_today,
+                        min_width=ui.S(64)).pack(side="right")
 
-        # 大号统计数字
-        stat = ttk.Frame(self.tab_today, padding=(0, 2, 0, 10))
-        stat.pack(fill="x")
-        self.today_count_var = tk.StringVar(value="0")
-        ttk.Label(stat, textvariable=self.today_count_var, style="Count.TLabel").pack(side="left")
-        ttk.Label(stat, text="人", style="CountUnit.TLabel").pack(side="left", padx=(6, 18), pady=(22, 0))
-        self.today_sub_var = tk.StringVar()
-        ttk.Label(stat, textvariable=self.today_sub_var, style="Hint.TLabel").pack(side="left", pady=(26, 0))
+        stats = ui.Surface(self.tab_today)
+        stats.pack(fill="x", pady=(0, ui.S(12)))
+        for i in range(3):
+            stats.columnconfigure(i, weight=1, uniform="today-stat")
+        self.stat_today = ui.StatCard(stats, "今日订餐", unit="人", value="—", accent=True)
+        self.stat_today.grid(row=0, column=0, sticky="nsew", padx=(0, ui.S(12)))
+        self.stat_price = ui.StatCard(stats, "今日单价", unit="元/天", value="—")
+        self.stat_price.grid(row=0, column=1, sticky="nsew", padx=(0, ui.S(12)))
+        self.stat_income = ui.StatCard(stats, "预计收入", unit="元", value="—")
+        self.stat_income.grid(row=0, column=2, sticky="nsew")
 
-        # 左右两栏名单
-        panes = ttk.Panedwindow(self.tab_today, orient="horizontal")
+        panes = ui.Surface(self.tab_today)
         panes.pack(fill="both", expand=True)
+        panes.columnconfigure(0, weight=1, uniform="today-pane")
+        panes.columnconfigure(1, weight=1, uniform="today-pane")
+        panes.rowconfigure(0, weight=1)
 
-        left = ttk.LabelFrame(panes, text="今日订餐", padding=8)
-        self.today_diner_tree = ttk.Treeview(left, columns=("sid", "name", "gender"),
-                                             show="headings", selectmode="browse")
-        for c, (t, w) in {"sid": ("学号", 90), "name": ("姓名", 90), "gender": ("性别", 60)}.items():
-            self.today_diner_tree.heading(c, text=t)
-            self.today_diner_tree.column(c, width=w, minwidth=60, anchor="center", stretch=True)
-        ys = ttk.Scrollbar(left, orient="vertical", command=self.today_diner_tree.yview)
-        self.today_diner_tree.configure(yscrollcommand=ys.set)
-        self.today_diner_tree.pack(side="left", fill="both", expand=True)
-        ys.pack(side="right", fill="y")
-        panes.add(left, weight=1)
+        self.diner_card = ui.TableCard(
+            panes,
+            {"sid": ("学号", 110, "w"), "name": ("姓名", 100, "w"),
+             "gender": ("性别", 64, "center")},
+            title="今日订餐", empty_text="今天还没有人订餐")
+        self.diner_card.grid(row=0, column=0, sticky="nsew", padx=(0, ui.S(12)))
+        self.absent_card = ui.TableCard(
+            panes,
+            {"sid": ("学号", 90, "w"), "name": ("姓名", 90, "w"),
+             "reason": ("原因", 120, "w")},
+            title="今日不订", empty_text="今天所有人都订餐")
+        self.absent_card.grid(row=0, column=1, sticky="nsew")
 
-        right = ttk.LabelFrame(panes, text="今日不订", padding=8)
-        self.today_absent_tree = ttk.Treeview(right, columns=("sid", "name", "reason"),
-                                              show="headings", selectmode="browse")
-        for c, (t, w) in {"sid": ("学号", 70), "name": ("姓名", 80), "reason": ("原因", 110)}.items():
-            self.today_absent_tree.heading(c, text=t)
-            self.today_absent_tree.column(c, width=w, minwidth=50,
-                                          anchor="center" if c != "reason" else "w", stretch=True)
-        ys2 = ttk.Scrollbar(right, orient="vertical", command=self.today_absent_tree.yview)
-        self.today_absent_tree.configure(yscrollcommand=ys2.set)
-        self.today_absent_tree.pack(side="left", fill="both", expand=True)
-        ys2.pack(side="right", fill="y")
-        self.today_absent_tree.tag_configure("closed", foreground="#909090")
-        panes.add(right, weight=1)
+        self.today_diner_tree = self.diner_card.tree
+        self.today_absent_tree = self.absent_card.tree
+        self.today_absent_tree.tag_configure("closed", foreground=ui.C.text3)
 
     # -- 今日订餐 ------------------------------------------------------
     def refresh_today(self) -> None:
@@ -688,11 +797,13 @@ class FeeApp(tk.Tk):
 
         if not in_month:
             self.today_date_var.set(f"今天 {today.year}年{today.month}月{today.day}日（不在本工程月份）")
-            self.today_count_var.set("—")
-            self.today_sub_var.set(
-                f"本工程为 {self.proj.year}年{self.proj.month}月，"
-                f"请切换到“每日单价”页查看当月的具体情况。"
-            )
+            self.stat_today.set("—", f"本工程为 {self.proj.year}年{self.proj.month}月")
+            self.stat_price.set("—", "请切换到“每日单价”页查看")
+            self.stat_income.set("—", "—")
+            self.diner_card.set_subtitle("—")
+            self.absent_card.set_subtitle("—")
+            self.diner_card.set_empty(True, "不在本工程月份")
+            self.absent_card.set_empty(True, "不在本工程月份")
             return
 
         day = today.day
@@ -701,21 +812,33 @@ class FeeApp(tk.Tk):
         )
 
         if self.proj.is_closed_day(day):
-            self.today_count_var.set("0")
-            self.today_sub_var.set(f"今天是每周休息日，不供餐。名单共 {total} 人。")
+            self.stat_today.set("0", f"今天是每周休息日，不供餐 · 名单共 {total} 人")
+            self.stat_price.set(fmt_money(self.proj.price_for_day(day)), "每周休息日单价为 0")
+            self.stat_income.set("¥0.00", "今天不供餐")
             for sid in self.proj.sorted_sids():
                 p = self.proj.roster[sid]
                 absent.insert("", "end", values=(p.sid, p.name, "每周休息日"), tags=("closed",))
+            self.diner_card.set_subtitle("0 人")
+            self.absent_card.set_subtitle(f"{total} 人")
+            self.diner_card.set_empty(True, "今天是每周休息日")
+            self.absent_card.set_empty(total == 0)
             return
 
         diners = self.proj.diners_on(day)
         total_open = len(self.proj.open_days())
-        self.today_count_var.set(str(len(diners)))
         price = self.proj.price_for_day(day)
-        self.today_sub_var.set(
-            f"共 {total} 人，今天订餐 {len(diners)} 人、不订 {total - len(diners)} 人；"
-            f"今日单价 {fmt_money(price)} 元，预计收入 {fmt_money(price * len(diners))} 元"
-        )
+        absent_count = total - len(diners)
+        self.stat_today.set(str(len(diners)), f"共 {total} 人 · 不订 {absent_count} 人")
+        self.stat_price.set(
+            fmt_money(price),
+            "按全月单价" if price == self.proj.month_price else "单独设置的单价")
+        self.stat_income.set("¥" + fmt_money(price * len(diners)),
+                             f"订餐 {len(diners)} 人 × {fmt_money(price)} 元")
+        self.diner_card.set_subtitle(f"{len(diners)} 人")
+        self.absent_card.set_subtitle(f"{absent_count} 人")
+        self.diner_card.set_empty(not diners, "今天还没有人订餐")
+        self.absent_card.set_empty(absent_count == 0, "今天所有人都订餐")
+
         for item in diners:
             tree.insert("", "end", values=(item["sid"], item["name"], item["gender"]))
 
@@ -732,146 +855,178 @@ class FeeApp(tk.Tk):
 
     # -- 每日单价 ------------------------------------------------------
     def _build_tab_days(self) -> None:
-        bar = ttk.Frame(self.tab_days)
-        bar.pack(fill="x", pady=(0, 8))
-        ttk.Button(bar, text="修改选中日期单价...", command=self.edit_selected_day).pack(side="left", padx=(0, 6))
-        ttk.Button(bar, text="清除选中日期设置", command=self.clear_selected_day).pack(side="left", padx=(0, 6))
-        ttk.Button(bar, text="全部恢复全月单价", command=self.reset_day_prices).pack(side="left", padx=(0, 6))
-        self.day_info_var = tk.StringVar()
-        ttk.Label(bar, textvariable=self.day_info_var, style="Hint.TLabel").pack(side="right")
+        strip = ui.StatStrip(self.tab_days,
+                             ["供餐天数", "全月单价", "按天合计", "单独设置"])
+        strip.pack(fill="x", pady=(0, ui.S(12)))
+        self.day_info_strip = strip
 
-        wrap = ttk.Frame(self.tab_days)
-        wrap.pack(fill="both", expand=True)
-        columns = ("day", "week", "price", "note")
-        self.day_tree = ttk.Treeview(wrap, columns=columns, show="headings", selectmode="browse")
-        headings = {"day": "日期", "week": "星期", "price": "单价（元）", "note": "设置说明"}
-        widths = {"day": 120, "week": 90, "price": 140, "note": 320}
-        for c in columns:
-            self.day_tree.heading(c, text=headings[c])
-            self.day_tree.column(c, width=widths[c], anchor="center" if c != "note" else "w", stretch=(c == "note"))
-        yscroll = ttk.Scrollbar(wrap, orient="vertical", command=self.day_tree.yview)
-        self.day_tree.configure(yscrollcommand=yscroll.set)
-        self.day_tree.pack(side="left", fill="both", expand=True)
-        yscroll.pack(side="right", fill="y")
-        self.day_tree.tag_configure("weekend", background="#F2F2F2")
-        self.day_tree.tag_configure("closed", background="#E4E4E4", foreground="#808080")
-        self.day_tree.tag_configure("today", background="#FFF4CE")
+        bar = ui.Surface(self.tab_days)
+        bar.pack(fill="x", pady=(0, ui.S(10)))
+        ui.FluentButton(bar, "修改选中日期单价...", kind="accent",
+                        command=self.edit_selected_day).pack(side="left")
+        ui.FluentButton(bar, "清除选中日期设置", kind="subtle",
+                        command=self.clear_selected_day).pack(side="left", padx=(ui.S(8), 0))
+        ui.FluentButton(bar, "全部恢复全月单价", kind="subtle",
+                        command=self.reset_day_prices).pack(side="left", padx=(ui.S(8), 0))
+        self.day_info_var = tk.StringVar()
+        ui.text_label(bar, textvariable=self.day_info_var, font_key="caption",
+                      fg=ui.C.text3).pack(side="right")
+
+        self.day_card = ui.TableCard(
+            self.tab_days,
+            {"day": ("日期", 140, "w"), "week": ("星期", 100, "center"),
+             "price": ("单价（元）", 140, "center"), "note": ("设置说明", 320, "w")},
+            title="每日单价", empty_text="本月还没有日期")
+        self.day_card.pack(fill="both", expand=True)
+        self.day_tree = self.day_card.tree
+        self.day_tree.tag_configure("weekend", background="#FAFAFA")
+        self.day_tree.tag_configure("closed", background="#F0F0F0", foreground=ui.C.text3)
+        self.day_tree.tag_configure("today", background="#FFF8E1")
+        self.day_tree.tag_configure("stripe", background="#FAFAFA")
         self.day_tree.bind("<Double-1>", lambda e: self.edit_selected_day(event=e))
 
     # -- 人员名单 ------------------------------------------------------
     def _build_tab_roster(self) -> None:
-        bar = ttk.Frame(self.tab_roster)
-        bar.pack(fill="x", pady=(0, 8))
-        ttk.Button(bar, text="添加人员", style="Accent.TButton", command=self.add_person, width=10).pack(side="left", padx=(0, 6))
-        ttk.Button(bar, text="编辑", command=self.edit_person, width=8).pack(side="left", padx=(0, 6))
-        ttk.Button(bar, text="删除", command=self.delete_person, width=8).pack(side="left", padx=(0, 12))
-        ttk.Button(bar, text="导入名单（Excel/CSV）...", command=self.import_roster).pack(side="left", padx=(0, 6))
-        ttk.Button(bar, text="文本粘贴导入...", command=self.import_roster_text).pack(side="left", padx=(0, 6))
-        ttk.Button(bar, text="下载模板", command=self.export_template).pack(side="left", padx=(0, 6))
+        bar = ui.Surface(self.tab_roster)
+        bar.pack(fill="x", pady=(0, ui.S(10)))
+        ui.FluentButton(bar, "添加人员", kind="accent", command=self.add_person).pack(
+            side="left", padx=(0, ui.S(8)))
+        ui.FluentButton(bar, "编辑", command=self.edit_person).pack(side="left", padx=(0, ui.S(6)))
+        ui.FluentButton(bar, "删除", kind="danger", command=self.delete_person).pack(
+            side="left", padx=(0, ui.S(16)))
+        ui.FluentButton(bar, "导入名单（Excel/CSV）...", kind="subtle",
+                        command=self.import_roster).pack(side="left", padx=(0, ui.S(6)))
+        ui.FluentButton(bar, "文本粘贴导入...", kind="subtle",
+                        command=self.import_roster_text).pack(side="left", padx=(0, ui.S(6)))
+        ui.FluentButton(bar, "下载模板", kind="subtle",
+                        command=self.export_template).pack(side="left")
 
-        wrap = ttk.Frame(self.tab_roster)
-        wrap.pack(fill="both", expand=True)
-        columns = ("sid", "name", "gender", "id_card", "skip_days", "days", "cost")
-        self.roster_tree = ttk.Treeview(wrap, columns=columns, show="headings", selectmode="browse")
-        headings = {
-            "sid": "学号", "name": "姓名", "gender": "性别", "id_card": "身份证号",
-            "skip_days": "不订天数", "days": "订餐天数", "cost": "应缴金额（元）",
-        }
-        widths = {"sid": 130, "name": 110, "gender": 60, "id_card": 210, "skip_days": 90, "days": 90, "cost": 130}
-        for c in columns:
-            self.roster_tree.heading(c, text=headings[c])
-            anchor = "w" if c in ("sid", "name", "id_card") else "center"
-            self.roster_tree.column(c, width=widths[c], anchor=anchor, stretch=(c == "id_card"))
-        yscroll = ttk.Scrollbar(wrap, orient="vertical", command=self.roster_tree.yview)
-        self.roster_tree.configure(yscrollcommand=yscroll.set)
-        self.roster_tree.pack(side="left", fill="both", expand=True)
-        yscroll.pack(side="right", fill="y")
-        self.roster_tree.tag_configure("optout", foreground="#999999")
+        self.roster_card = ui.TableCard(
+            self.tab_roster,
+            {"sid": ("学号", 130, "w"), "name": ("姓名", 110, "w"),
+             "gender": ("性别", 64, "center"), "id_card": ("身份证号", 210, "w"),
+             "skip_days": ("不订天数", 96, "center"), "days": ("订餐天数", 96, "center"),
+             "cost": ("应缴金额（元）", 130, "center")},
+            title="人员名单", empty_text="还没有人员，点“添加人员”或导入名单")
+        self.roster_card.pack(fill="both", expand=True)
+        self.roster_tree = self.roster_card.tree
+        self.roster_tree.tag_configure("optout", foreground=ui.C.text3)
+        self.roster_tree.tag_configure("stripe", background="#FAFAFA")
         self.roster_tree.bind("<Double-1>", lambda e: self.edit_person())
 
     # -- 每日不订 ------------------------------------------------------
     def _build_tab_skip(self) -> None:
-        body = ttk.Frame(self.tab_skip)
+        body = ui.Surface(self.tab_skip)
         body.pack(fill="both", expand=True)
 
-        left = ttk.LabelFrame(body, text="人员名单", padding=8)
-        left.pack(side="left", fill="y", padx=(0, 12))
-        self.person_list = tk.Listbox(left, width=24, height=22, exportselection=False,
-                                      activestyle="dotbox", font=("Microsoft YaHei UI", 10))
-        self.person_list.pack(side="left", fill="y")
-        lb_scroll = ttk.Scrollbar(left, orient="vertical", command=self.person_list.yview)
-        self.person_list.configure(yscrollcommand=lb_scroll.set)
-        lb_scroll.pack(side="right", fill="y")
-        self.person_list.bind("<<ListboxSelect>>", self._on_person_selected)
+        left = ui.Card(body, padding=(0, 14), title="人员名单")
+        left.pack(side="left", fill="y", padx=(0, ui.S(12)))
+        left.body.pack_configure(padx=0)
+        if left.header is not None:
+            left.header.pack_configure(padx=ui.S(16))
 
-        right = ttk.Frame(body)
+        self.person_list_card = left
+        ui.divider(left.body).pack(fill="x")
+        holder = ui.Surface(left.body, bg=ui.C.card)
+        holder.pack(fill="both", expand=True)
+        self.person_tree = ttk.Treeview(holder, columns=("name",), show="headings",
+                                        selectmode="browse")
+        self.person_tree.heading("name", text="人员", anchor="w")
+        self.person_tree.column("name", width=ui.S(232), anchor="w", stretch=True)
+        scroll = ui.FluentScrollbar(holder, command=self.person_tree.yview)
+        self.person_tree.configure(yscrollcommand=scroll.set)
+        self.person_tree.pack(side="left", fill="both", expand=True, padx=(ui.S(6), 0))
+        scroll.pack(side="right", fill="y", padx=(0, ui.S(4)))
+        self.person_tree.bind("<<TreeviewSelect>>", self._on_person_selected)
+        self.person_empty = tk.Label(holder, text="名单为空", bg=ui.C.card,
+                                     fg=ui.C.text3, font=ui.F("caption"))
+        self.person_list = _PersonListAdapter(self.person_tree, self.person_empty)
+
+        right = ui.Surface(body)
         right.pack(side="left", fill="both", expand=True)
 
-        head = ttk.Frame(right)
-        head.pack(fill="x", pady=(0, 8))
+        head = ui.Surface(right)
+        head.pack(fill="x")
+        info = ui.Surface(head)
+        info.pack(side="left")
+        ui.text_label(info, "每日不订", font_key="caption", fg=ui.C.text3).pack(anchor="w")
         self.skip_title_var = tk.StringVar(value="请先在左侧选择人员")
-        ttk.Label(head, textvariable=self.skip_title_var, style="Big.TLabel").pack(side="left")
+        ui.text_label(info, textvariable=self.skip_title_var, font_key="h2").pack(anchor="w")
         self.skip_month_info_var = tk.StringVar()
-        ttk.Label(head, textvariable=self.skip_month_info_var, style="Hint.TLabel").pack(side="right")
+        self.skip_badge = ui.FluentCheck(head, "—", kind="chip", min_width=ui.S(150),
+                                         enabled=False)
+        self.skip_badge.pack(side="right", pady=(ui.S(10), 0))
 
-        quick = ttk.Frame(right)
-        quick.pack(fill="x", pady=(0, 8))
-        ttk.Button(quick, text="标记今天不订", command=self.mark_today_skip, width=14).pack(side="left", padx=(0, 6))
-        ttk.Button(quick, text="整月都不订", command=lambda: self._set_all_days(True), width=12).pack(side="left", padx=(0, 6))
-        ttk.Button(quick, text="全部清除", command=lambda: self._set_all_days(False), width=10).pack(side="left", padx=(0, 6))
-        ttk.Button(quick, text="导入本月不订...", command=self.import_unordered, width=14).pack(side="left")
+        quick = ui.Surface(right)
+        quick.pack(fill="x", pady=(ui.S(10), ui.S(10)))
+        self.skip_buttons = [
+            ui.FluentButton(quick, "标记今天不订", kind="accent",
+                            command=self.mark_today_skip, enabled=False),
+            ui.FluentButton(quick, "整月都不订",
+                            command=lambda: self._set_all_days(True), enabled=False),
+            ui.FluentButton(quick, "全部清除", kind="subtle",
+                            command=lambda: self._set_all_days(False), enabled=False),
+        ]
+        self.skip_buttons[0].pack(side="left", padx=(0, ui.S(8)))
+        self.skip_buttons[1].pack(side="left", padx=(0, ui.S(8)))
+        self.skip_buttons[2].pack(side="left")
+        ui.FluentButton(quick, "导入本月不订...", kind="subtle",
+                        command=self.import_unordered).pack(side="left", padx=(ui.S(8), 0))
         self.skip_hint_var = tk.StringVar()
-        ttk.Label(quick, textvariable=self.skip_hint_var, style="Hint.TLabel").pack(side="right")
+        ui.text_label(quick, textvariable=self.skip_hint_var, font_key="caption",
+                      fg=ui.C.text3).pack(side="right")
 
-        self.day_frame = ttk.LabelFrame(right, text="不订日期（勾选表示当天不订餐）", padding=10)
+        day_card = ui.Card(right, padding=(14, 12), title="不订日期",
+                           subtitle="勾选表示当天不订餐")
+        day_card.pack(fill="both", expand=True)
+        self.day_frame = ui.Surface(day_card.body, bg=ui.C.card)
         self.day_frame.pack(fill="both", expand=True)
 
-        ttk.Label(right, text="提示：“整月都不订”就是把当月每一天都标记为不订；逐日勾选会实时保存到工程。",
-                  style="Hint.TLabel").pack(anchor="w", pady=(8, 0))
+        ui.text_label(right, "提示：“整月都不订”就是把当月每一天都标记为不订；逐日勾选会实时保存到工程。",
+                      font_key="caption", fg=ui.C.text3).pack(anchor="w", pady=(ui.S(8), 0))
 
     # -- 核算汇总 ------------------------------------------------------
     def _build_tab_summary(self) -> None:
-        bar = ttk.Frame(self.tab_summary)
-        bar.pack(fill="x", pady=(0, 8))
-        ttk.Button(bar, text="刷新", command=self.refresh_summary, width=8).pack(side="left", padx=(0, 6))
-        ttk.Button(bar, text="导出核算表（Excel）...", style="Accent.TButton",
-                   command=self.export_settlement).pack(side="left", padx=(0, 14))
+        strip = ui.StatStrip(self.tab_summary, ["合计金额", "人数", "供餐天数", "每周休息"])
+        strip.pack(fill="x", pady=(0, ui.S(12)))
+        self.summary_strip = strip
 
+        bar = ui.Surface(self.tab_summary)
+        bar.pack(fill="x", pady=(0, ui.S(10)))
+        ui.FluentButton(bar, "导出核算表（Excel）...", kind="accent",
+                        command=self.export_settlement).pack(side="left")
+        ui.FluentButton(bar, "刷新", kind="subtle",
+                        command=self.refresh_summary).pack(side="left", padx=(ui.S(8), ui.S(16)))
         self.skip_zero_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(bar, text="导出时不包括费用为 0 的人",
-                        variable=self.skip_zero_var,
-                        command=self._on_skip_zero_toggle).pack(side="left")
-
+        ui.FluentCheck(bar, "导出时不包括费用为 0 的人", self.skip_zero_var,
+                       command=self._on_skip_zero_toggle).pack(side="left", pady=(ui.S(4), 0))
         self.total_var = tk.StringVar(value="合计：0.00 元")
-        ttk.Label(bar, textvariable=self.total_var, style="Money.TLabel").pack(side="right")
 
-        wrap = ttk.Frame(self.tab_summary)
-        wrap.pack(fill="both", expand=True)
-        columns = ("sid", "name", "gender", "id_card", "days", "note", "cost")
-        self.summary_tree = ttk.Treeview(wrap, columns=columns, show="headings")
-        headings = {
-            "sid": "学号", "name": "姓名", "gender": "性别", "id_card": "身份证号",
-            "days": "订餐天数", "note": "备注", "cost": "应缴金额（元）",
-        }
-        widths = {"sid": 120, "name": 100, "gender": 60, "id_card": 200, "days": 90, "note": 140, "cost": 130}
-        for c in columns:
-            self.summary_tree.heading(c, text=headings[c])
-            anchor = "w" if c in ("sid", "name", "id_card") else "center"
-            self.summary_tree.column(c, width=widths[c], anchor=anchor, stretch=(c == "id_card"))
-        yscroll = ttk.Scrollbar(wrap, orient="vertical", command=self.summary_tree.yview)
-        self.summary_tree.configure(yscrollcommand=yscroll.set)
-        self.summary_tree.pack(side="left", fill="both", expand=True)
-        yscroll.pack(side="right", fill="y")
-        self.summary_tree.tag_configure("optout", foreground="#999999")
+        self.summary_card = ui.TableCard(
+            self.tab_summary,
+            {"sid": ("学号", 120, "w"), "name": ("姓名", 100, "w"),
+             "gender": ("性别", 64, "center"), "id_card": ("身份证号", 200, "w"),
+             "days": ("订餐天数", 96, "center"), "note": ("备注", 140, "w"),
+             "cost": ("应缴金额（元）", 130, "center")},
+            title="核算汇总", empty_text="还没有可汇总的数据")
+        self.summary_card.pack(fill="both", expand=True)
+        self.summary_tree = self.summary_card.tree
+        self.summary_tree.tag_configure("optout", foreground=ui.C.text3)
+        self.summary_tree.tag_configure("stripe", background="#FAFAFA")
 
     # ---------------------------------------------------------------- 状态栏
     def _build_status(self) -> None:
-        bar = ttk.Frame(self, padding=(14, 2, 14, 6))
-        bar.pack(fill="x")
+        ui.divider(self).pack(side="bottom", fill="x")
+        bar = ui.Surface(self)
+        bar.pack(side="bottom", fill="x", padx=ui.S(18), pady=(ui.S(6), ui.S(8)))
+        self.status_dot = ui.StatusDot(bar, ui.C.success)
+        self.status_dot.pack(side="left")
         self.status_var = tk.StringVar(value="就绪")
-        ttk.Label(bar, textvariable=self.status_var, anchor="w").pack(side="left")
+        ui.text_label(bar, textvariable=self.status_var, font_key="caption",
+                      fg=ui.C.text2).pack(side="left", padx=(ui.S(8), 0))
         self.file_var = tk.StringVar(value="未保存")
-        ttk.Label(bar, textvariable=self.file_var, anchor="e", style="Hint.TLabel").pack(side="right")
+        ui.text_label(bar, textvariable=self.file_var, font_key="caption",
+                      fg=ui.C.text3).pack(side="right")
 
     def _bind_shortcuts(self) -> None:
         """注册全局快捷键。
@@ -1082,6 +1237,10 @@ class FeeApp(tk.Tk):
     def _sync_header_vars(self) -> None:
         self.title_var.set(self.proj.title)
         self.class_var.set(self.proj.class_name)
+        # 打开旧工程时，年份可能不在默认下拉范围里，补进去
+        years = {str(y) for y in range(date.today().year - 10, date.today().year + 11)}
+        years.add(str(self.proj.year))
+        self.year_select.set_values(sorted(years))
         self.year_var.set(str(self.proj.year))
         self.month_var.set(str(self.proj.month))
         self.price_var.set(fmt_money(self.proj.month_price))
@@ -1093,7 +1252,29 @@ class FeeApp(tk.Tk):
         mark = "*" if self.dirty else ""
         name = os.path.basename(self.path) if self.path else "未保存工程"
         self.title(f"{mark}{self.proj.title} - {name} - {APP_TITLE}")
-        self.file_var.set(self.path or "未保存")
+        self.file_var.set(("● " if self.dirty else "") + (self.path or "未保存"))
+        if getattr(self, "save_btn", None) is not None:
+            self.save_btn.set_enabled(self.dirty or not self.path)
+        if getattr(self, "status_dot", None) is not None:
+            self.status_dot.set_color(ui.C.warning if self.dirty else ui.C.success)
+        if getattr(self, "brand_sub_var", None) is not None:
+            closed = len(self.proj.closed_days())
+            rest = "、".join(WEEKDAYS_CN[i] for i in sorted(self.proj.skip_weekdays)) or "无"
+            parts = [
+                f"{self.proj.year}年{self.proj.month}月",
+                self.proj.class_name or "未填写班级",
+                f"全月单价 {fmt_money(self.proj.month_price)} 元/天",
+                f"名单 {len(self.proj.roster)} 人",
+            ]
+            if self.proj.month_price > 0:
+                parts.append(f"供餐 {len(self.proj.open_days())} 天")
+            parts.append(f"休息日 {rest}")
+            self.brand_sub_var.set("　·　".join(parts))
+            if getattr(self, "settings_card", None) is not None:
+                self.settings_card.set_subtitle(
+                    f"{self.proj.year}年{self.proj.month}月 · "
+                    f"{self.proj.class_name or '未填写班级'} · "
+                    f"{fmt_money(self.proj.month_price)} 元/天")
 
     def _touch(self) -> None:
         self.dirty = True
@@ -1101,6 +1282,8 @@ class FeeApp(tk.Tk):
 
     def _status(self, message: str) -> None:
         self.status_var.set(message)
+        if getattr(self, "status_dot", None) is not None:
+            self.status_dot.set_color(ui.C.success)
 
     # ---------------------------------------------------------------- 顶部应用
     def apply_header(self) -> None:
@@ -1201,18 +1384,26 @@ class FeeApp(tk.Tk):
             if (today.year, today.month, today.day) == (self.proj.year, self.proj.month, day):
                 tags.append("today")
                 note += "（今天）"
+            if not tags and day % 2 == 0:
+                tags.append("stripe")
             tree.insert("", "end", iid=f"d{day}",
                         values=(f"{self.proj.month}月{day}日", weekday_name(self.proj.year, self.proj.month, day),
                                 fmt_money(price), note),
                         tags=tuple(tags))
+        self.day_card.set_subtitle(f"{self.proj.days_in_month} 天")
         if self.proj.month_price <= 0:
-            self.day_info_var.set(f"共 {self.proj.days_in_month} 天　尚未设置全月单价")
+            self.day_info_var.set(f"共 {self.proj.days_in_month} 天 · 尚未设置全月单价")
         else:
+            closed = len(self.proj.closed_days())
             self.day_info_var.set(
-                f"共 {self.proj.days_in_month} 天　供餐 {len(self.proj.open_days())} 天　"
-                f"全月单价 {fmt_money(self.proj.month_price)} 元/天　"
-                f"按天合计 {fmt_money(total)} 元　单独设置 {count_override} 天"
+                f"共 {self.proj.days_in_month} 天 · 每周休息 {closed} 天 · "
+                f"单独设置 {count_override} 天"
             )
+        self.day_info_strip.set(0, f"{len(self.proj.open_days())} 天")
+        self.day_info_strip.set(1, f"{fmt_money(self.proj.month_price)} 元/天")
+        self.day_info_strip.set(2, f"{fmt_money(total)} 元")
+        self.day_info_strip.set(3, f"{count_override} 天",
+                                ui.C.accent if count_override else ui.C.text)
 
     def _selected_day(self, event=None) -> Optional[int]:
         if event is not None:
@@ -1287,27 +1478,36 @@ class FeeApp(tk.Tk):
     def refresh_roster(self) -> None:
         tree = self.roster_tree
         tree.delete(*tree.get_children())
-        for sid in self.proj.sorted_sids():
+        total_open = len(self.proj.open_days())
+        for index, sid in enumerate(self.proj.sorted_sids()):
             p = self.proj.roster[sid]
             skip_n = len(set(self.proj.skips.get(sid, set())) & set(self.proj.day_list()))
             values = (p.sid, p.name, p.gender, p.id_card, skip_n,
                       self.proj.ordered_days(sid), fmt_money(self.proj.person_cost(sid)))
-            tree.insert("", "end", iid=sid, values=values,
-                        tags=("optout",) if skip_n >= len(self.proj.open_days()) and skip_n else ())
+            tags = []
+            if skip_n >= total_open and skip_n:
+                tags.append("optout")
+            elif index % 2:
+                tags.append("stripe")
+            tree.insert("", "end", iid=sid, values=values, tags=tuple(tags))
+        self.roster_card.set_subtitle(f"{len(self.proj.roster)} 人")
+        self.roster_card.set_empty(not self.proj.roster)
 
     def refresh_person_list(self) -> None:
         self._person_order = self.proj.sorted_sids()
         self.person_list.delete(0, "end")
+        total_open = len(self.proj.open_days())
         for sid in self._person_order:
             p = self.proj.roster[sid]
             skip_n = len(set(self.proj.skips.get(sid, set())) & set(self.proj.day_list()))
-            if skip_n and skip_n >= len(self.proj.open_days()):
-                suffix = "（整月不订）"
+            if skip_n and skip_n >= total_open:
+                suffix = " · 整月不订"
             elif skip_n:
-                suffix = f"（不订 {skip_n} 天）"
+                suffix = f" · 不订 {skip_n} 天"
             else:
                 suffix = ""
-            self.person_list.insert("end", f"{sid}  {p.name}{suffix}")
+            self.person_list.insert("end", f"{p.name}  {sid}{suffix}")
+        self.person_list.set_empty(not self._person_order)
         if self._current_sid in self._person_order:
             idx = self._person_order.index(self._current_sid)
             self.person_list.selection_set(idx)
@@ -1392,20 +1592,27 @@ class FeeApp(tk.Tk):
     def _show_warnings(self, title: str, summary: str, warnings: List[str]) -> None:
         win = tk.Toplevel(self)
         win.title(title)
-        win.geometry("560x360")
-        body = ttk.Frame(win, padding=12)
-        body.pack(fill="both", expand=True)
-        ttk.Label(body, text=summary).pack(anchor="w", pady=(0, 8))
-        frame = ttk.Frame(body)
+        win.configure(bg=ui.C.bg)
+        win.geometry(f"{ui.S(640)}x{ui.S(460)}")
+        card = ui.Card(win, padding=(20, 16))
+        card.pack(fill="both", expand=True, padx=ui.S(12), pady=ui.S(12))
+        body = card.body
+        ui.text_label(body, title, font_key="h2").pack(anchor="w")
+        ui.text_label(body, summary, font_key="caption", fg=ui.C.text3,
+                      bg=ui.C.card, wrap=560).pack(anchor="w", pady=(ui.S(4), ui.S(10)))
+        frame = ui.Surface(body, bg=ui.C.card)
         frame.pack(fill="both", expand=True)
-        text = tk.Text(frame, wrap="word", height=12)
-        scroll = ttk.Scrollbar(frame, orient="vertical", command=text.yview)
+        text = tk.Text(frame, wrap="word", height=12, bd=0, relief="flat",
+                       bg=ui.C.card_alt, fg=ui.C.text, font=ui.F("body"),
+                       padx=ui.S(10), pady=ui.S(8), highlightthickness=0)
+        scroll = ui.FluentScrollbar(frame, command=text.yview)
         text.configure(yscrollcommand=scroll.set)
         text.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
         text.insert("1.0", "\n".join(warnings))
         text.configure(state="disabled")
-        ttk.Button(body, text="知道了", command=win.destroy).pack(anchor="e", pady=(10, 0))
+        ui.FluentButton(body, "知道了", kind="accent", command=win.destroy,
+                        min_width=ui.S(88)).pack(anchor="e", pady=(ui.S(12), 0))
         win.transient(self)
         center_window(win, self)
         win.grab_set()
@@ -1467,40 +1674,50 @@ class FeeApp(tk.Tk):
             self._day_vars[day] = var
             wd = weekday_name(self.proj.year, self.proj.month, day)
             closed = self.proj.is_closed_day(day)
-            text = f"{day}日 {wd}"
+            sub = wd
             if closed:
-                text += "·休息"
+                sub = "休息"
             elif in_month and today.day == day:
-                text += "·今天"
-            cb = ttk.Checkbutton(self.day_frame, text=text, variable=var,
-                                 command=lambda d=day: self._on_day_toggle(d))
-            cb.grid(row=(day - 1) // 7, column=(day - 1) % 7, sticky="w", padx=6, pady=5)
+                sub = "今天"
+            cb = ui.FluentCheck(self.day_frame, f"{day} 日", var, kind="chip",
+                                subtext=sub, min_width=ui.S(78),
+                                command=lambda d=day: self._on_day_toggle(d))
+            cb.grid(row=(day - 1) // 7, column=(day - 1) % 7, sticky="we",
+                    padx=ui.S(3), pady=ui.S(3))
             if closed:
                 # 每周休息日不供餐，无需也不能单独勾选“不订”
                 cb.state(["disabled"])
             self._day_cbs[day] = cb
+        for col in range(7):
+            self.day_frame.columnconfigure(col, weight=1, uniform="days")
         self.skip_hint_var.set(f"今天是 {today.year}年{today.month}月{today.day}日" if in_month
                                else f"今天 {today.month}月{today.day}日 不在本工程月份内")
         self._load_skip_state()
 
     def _update_skip_month_info(self, sid: str) -> None:
-        """更新“每日不订”页右上角的整月统计。"""
+        """更新“每日不订”页右侧的整月统计徽标。"""
         total = len(self.proj.open_days())
         skipped = len(set(self.proj.skips.get(sid, set())) & set(self.proj.day_list()))
         if total and skipped >= total:
-            self.skip_month_info_var.set(f"整月都不订（{skipped} 天）")
+            text = f"整月都不订 · {skipped} 天"
         elif skipped:
-            self.skip_month_info_var.set(f"已不订 {skipped} 天 / 供餐 {total} 天")
+            text = f"已不订 {skipped} 天 / 供餐 {total} 天"
         else:
-            self.skip_month_info_var.set(f"每天订餐（供餐 {total} 天）")
+            text = f"每天订餐 · 供餐 {total} 天"
+        self.skip_month_info_var.set(text)
+        self.skip_badge.configure_text(text)
 
     def _load_skip_state(self) -> None:
         self._loading_skip = True
         try:
             sid = self._current_sid
-            if not sid or sid not in self.proj.roster:
+            has_person = bool(sid and sid in self.proj.roster)
+            for button in getattr(self, "skip_buttons", []):
+                button.set_enabled(has_person)
+            if not has_person:
                 self.skip_title_var.set("请先在左侧选择人员")
                 self.skip_month_info_var.set("")
+                self.skip_badge.configure_text("未选择人员")
                 for var in self._day_vars.values():
                     var.set(False)
                 for cb in self._day_cbs.values():
@@ -1595,16 +1812,21 @@ class FeeApp(tk.Tk):
         tree.delete(*tree.get_children())
         rows = self.proj.settle()
         total_open = len(self.proj.open_days())
-        for item in rows:
+        for index, item in enumerate(rows):
             n = len(set(self.proj.skips.get(item["sid"], set())) & set(self.proj.day_list()))
             if n and n >= total_open:
                 note = "整月不订"
             else:
                 note = f"不订 {n} 天" if n else ""
+            tags = []
+            if note == "整月不订":
+                tags.append("optout")
+            elif index % 2:
+                tags.append("stripe")
             tree.insert("", "end", iid=item["sid"],
                         values=(item["sid"], item["name"], item["gender"], item["id_card"],
                                 item["days"], note, fmt_money(item["cost"])),
-                        tags=("optout",) if note == "整月不订" else ())
+                        tags=tuple(tags))
         closed = len(self.proj.closed_days())
         zero = sum(1 for r in rows if float(r["cost"]) == 0.0)
         extra = f"　费用为 0 的 {zero} 人" if zero else ""
@@ -1612,6 +1834,12 @@ class FeeApp(tk.Tk):
             f"合计：{fmt_money(self.proj.total_cost())} 元　共 {len(rows)} 人{extra}　"
             f"供餐 {len(self.proj.open_days())} 天" + (f"（每周休息 {closed} 天）" if closed else "")
         )
+        self.summary_card.set_subtitle(f"{len(rows)} 人")
+        self.summary_card.set_empty(not rows)
+        self.summary_strip.set(0, f"{fmt_money(self.proj.total_cost())} 元", ui.C.accent)
+        self.summary_strip.set(1, f"{len(rows)} 人")
+        self.summary_strip.set(2, f"{len(self.proj.open_days())} 天")
+        self.summary_strip.set(3, f"{closed} 天", ui.C.text3 if closed else ui.C.text)
 
     def _on_tab_changed(self, event=None) -> None:
         try:
@@ -1789,12 +2017,25 @@ class FeeApp(tk.Tk):
         """快捷键一览窗口。"""
         win = tk.Toplevel(self)
         win.title("快捷键一览")
-        win.geometry("540x540")
-        win.resizable(False, False)
+        win.configure(bg=ui.C.bg)
+        height = min(ui.S(760), self.winfo_screenheight() - ui.S(120))
+        win.geometry(f"{ui.S(640)}x{height}")
+        win.minsize(ui.S(580), ui.S(520))
+        win.resizable(False, True)
 
-        body = ttk.Frame(win, padding=14)
-        body.pack(fill="both", expand=True)
-        ttk.Label(body, text="快捷键", style="Big.TLabel").pack(anchor="w", pady=(0, 10))
+        card = ui.Card(win, padding=(20, 16))
+        card.pack(fill="both", expand=True, padx=ui.S(12), pady=ui.S(12))
+        body = card.body
+        ui.text_label(body, "快捷键", font_key="h2").pack(anchor="w")
+        ui.text_label(body, "光标在输入框内时，Delete / F2 / 空格不会触发，避免误操作；保存类快捷键始终有效。",
+                      font_key="caption", fg=ui.C.text3, bg=ui.C.card, wrap=540).pack(
+                          anchor="w", pady=(ui.S(4), ui.S(12)))
+
+        # 先占住底部按钮，内容再多也不会把它挤掉
+        footer = ui.Surface(body, bg=ui.C.card)
+        footer.pack(side="bottom", fill="x", pady=(ui.S(12), 0))
+        ui.FluentButton(footer, "关闭", kind="accent", command=win.destroy,
+                        min_width=ui.S(88)).pack(side="right")
 
         groups = [
             ("文件", [
@@ -1824,18 +2065,20 @@ class FeeApp(tk.Tk):
             ]),
         ]
 
+        grid = ui.Surface(body, bg=ui.C.card)
+        grid.pack(fill="both", expand=True)
+        row = 0
         for title, items in groups:
-            frame = ttk.LabelFrame(body, text=title, padding=(10, 6))
-            frame.pack(fill="x", pady=(0, 8))
+            ui.text_label(grid, title, font_key="caption_strong", fg=ui.C.accent).grid(
+                row=row, column=0, columnspan=2, sticky="w", pady=(ui.S(8), ui.S(4)))
+            row += 1
             for key, desc in items:
-                row = ttk.Frame(frame)
-                row.pack(fill="x", pady=1)
-                ttk.Label(row, text=key, width=26, font=("Consolas", 9, "bold")).pack(side="left")
-                ttk.Label(row, text=desc).pack(side="left")
-
-        ttk.Label(body, text="提示：光标在输入框内时，Delete / F2 / 空格不会触发，避免误操作；保存类快捷键始终有效。",
-                  style="Hint.TLabel", wraplength=490, justify="left").pack(anchor="w", pady=(4, 8))
-        ttk.Button(body, text="关闭", command=win.destroy, width=10).pack(anchor="e")
+                tk.Label(grid, text=key, font=ui.F("mono"), fg=ui.C.text2, bg=ui.C.card,
+                         anchor="w").grid(row=row, column=0, sticky="w", padx=(ui.S(2), ui.S(18)))
+                tk.Label(grid, text=desc, font=ui.F("body"), fg=ui.C.text, bg=ui.C.card,
+                         anchor="w").grid(row=row, column=1, sticky="w")
+                row += 1
+        grid.columnconfigure(1, weight=1)
 
         win.transient(self)
         center_window(win, self)
@@ -1867,6 +2110,9 @@ def _program_name() -> str:
 def main(argv: Optional[List[str]] = None) -> int:
     """程序入口。argv[0] 之后的第一个参数视为要打开的 .cfee 工程路径。"""
     args = list(sys.argv[1:] if argv is None else argv)
+
+    # 必须早于创建 Tk，否则高 DPI 屏幕上界面会被系统拉伸得发虚
+    ui.enable_dpi_awareness()
 
     project_path: Optional[str] = None
     if args:

@@ -22,10 +22,10 @@
 ; 产物：dist\FeeMan-Setup-{#AppVersion}.exe
 ; ---------------------------------------------------------------------------
 
-#define AppName        "饭费管理系统"
+#define AppName        "Feeman饭费管理系统"
 #define AppNameEn      "FeeMan"
-#define AppVersion     "1.0.0"
-#define AppPublisher   "FeeMan"
+#define AppVersion     "1.1.0"
+#define AppPublisher   "WZA-Leon&cxykevin"
 #define AppExeName     "FeeMan.exe"
 #define SourceDir      "dist\FeeMan"
 #define FileAssocExt   ".cfee"
@@ -98,6 +98,7 @@ Name: "associate"; Description: "关联 {#FileAssocExt} 文件（双击直接打
 Source: "{#SourceDir}\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\fee_app.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\fee_core.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\fluent_ui.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\bootstrap_runtime.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\bootstrap_runtime.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion

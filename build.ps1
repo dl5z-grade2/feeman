@@ -94,7 +94,7 @@ else {
 # ---------------------------------------------------------------- stage
 Write-Step "Staging files into dist\FeeMan"
 
-foreach ($f in @("fee_app.py", "fee_core.py", "bootstrap_runtime.ps1", "bootstrap_runtime.bat", "README.md", "LICENSE")) {
+foreach ($f in @("fee_app.py", "fee_core.py", "fluent_ui.py", "bootstrap_runtime.ps1", "bootstrap_runtime.bat", "README.md", "LICENSE")) {
     Copy-Item -LiteralPath $f -Destination $stage -Force
 }
 Copy-Item -LiteralPath "assets\app.ico" -Destination $stage -Force
@@ -114,6 +114,7 @@ $required = @(
     "FeeMan.exe",
     "fee_app.py",
     "fee_core.py",
+    "fluent_ui.py",
     "bootstrap_runtime.ps1",
     "bootstrap_runtime.bat",
     "runtime\_tkinter.pyd",
@@ -161,5 +162,7 @@ if (-not $SkipInstaller) {
 Write-Step "Done"
 Write-Host "Portable : dist\FeeMan\FeeMan.exe (first run downloads Python runtime)"
 if (-not $SkipInstaller) {
-    Write-Host "Installer: dist\FeeMan-Setup-1.0.0.exe"
+    $setupName = (Get-ChildItem "dist\FeeMan-Setup-*.exe" | Sort-Object LastWriteTime -Descending |
+                  Select-Object -First 1).Name
+    Write-Host "Installer: dist\$setupName"
 }
